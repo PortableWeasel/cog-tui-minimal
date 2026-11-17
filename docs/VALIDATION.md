@@ -16,7 +16,7 @@
   the saved model.
 - Normal install and installed `--help` smoke.
 
-GCC and Clang ASan/UBSan passed all three final suites with the compatible
+GCC and Clang ASan/UBSan passed all twelve final CTest cases with the compatible
 external dependency profile, including REAL construction without submission. Sanitizers instrument this UI; the existing Cog
 installation is not rebuilt with sanitizers by those flags.
 
@@ -40,9 +40,10 @@ PTY tests also passed. No admission checks were bypassed.
 
 No paid/live provider request has been sent. Real multi-turn network acceptance
 and system-prompt/tool behavior are unverified. Tool execution is disabled.
-The sixteen scenario traces are design coverage; they are not sixteen separately
-executed scenario tests. Forced I/O failure, arbitrary provider
-failure timing, and every shutdown race are not yet exhaustively tested.
+The sixteen scenario traces map to grouped executable checks below, rather
+than sixteen one-to-one CTest entries. Arbitrary provider failure timing and
+every shutdown race are not exhaustively tested. Output hangup checks bounded
+nonzero exit; it cannot capture sanitizer diagnostics after the terminal is lost.
 
 ## Reproducing the local compatible profile
 
@@ -73,3 +74,25 @@ artifact remains an external dependency; keep its directory available. The
 explicit cog-cli target avoids an unrelated upstream all-target fixture link
 failure observed with BUILD_TESTING=OFF. This recipe is evidence for this local
 profile, not a replacement for Cog's dependency packaging instructions.
+
+
+## Executable scenario coverage
+
+| Design traces | Executed checks |
+|---|---|
+| 01 first run | failure-first-run (REAL construction with fabricated reference, no prompt) |
+| 02 relaunch, 03 streaming, 04 next turn | terminal and runtime |
+| 05 edit during streaming, 06 cancel | terminal, failure-sigint-active |
+| 07 exit | terminal, failure-eof, failure-sigint-idle, failure-sigterm-active |
+| 08 settings change | terminal and runtime reload |
+| 09 save failure | failure-save-retry, settings atomic-write cases |
+| 10 invalid file | settings malformed/duplicate/missing/oversized parser cases |
+| 11 missing credential, 14 reload refusal | failure-credential-recovery |
+| 12 provider failure | failure-provider-failure (loopback TLS peer closes; no external traffic) |
+| 13 resize | terminal PTY resize during edited input |
+| 15 mock proof | runtime, terminal |
+| 16 limits/teardown failure | settings bounded-input tests, failure-output-hangup |
+
+The loopback provider failure produces a terminal failure and clean nonzero
+exit with restored terminal modes. No real credential or external endpoint is
+used. Credential recovery tests construct/reload only and never submit a prompt.

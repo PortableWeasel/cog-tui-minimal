@@ -286,8 +286,10 @@ static cog_result_t render(app_t *a) {
       if (item->status == COG_MESSAGE_CANCELLED)
         say(a, "Turn cancelled.");
       else if (item->status != COG_MESSAGE_COMPLETE)
-        say(a, "Turn incomplete or failed. Submit fresh input to continue; no "
-               "automatic replay.");
+        say(a, a->quitting ? "Turn incomplete or failed. Runtime stopped; "
+                             "restart to continue. No automatic replay."
+                           : "Turn incomplete or failed. Submit fresh input to "
+                             "continue; no automatic replay.");
     }
   }
   return COG_OK;
