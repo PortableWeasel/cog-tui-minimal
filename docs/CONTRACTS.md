@@ -20,7 +20,9 @@ Readiness means the local runtime accepted configuration, not a successful futur
 network request. Reload success means published for a future turn, not activated.
 Visible outcome uses public message status, never undocumented numeric CLI state.
 A submit return of OK means queued; local UI busy state is cleared only after a
-new terminal assistant display item or explicit runtime failure, not on submit.
+new committed terminal assistant display item (nonzero node ID) or explicit
+runtime failure, not on submit. Active aggregates may already be INCOMPLETE
+with node_id=0; status alone is insufficient. Verify this in runtime tests.
 
 Settings format: five lines, `version=1`, `provider=...`, `model=...`,
 `base_url=...`, `credential_ref=...`. Writer emits that order. Reader accepts any

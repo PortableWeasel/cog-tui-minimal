@@ -196,11 +196,13 @@ User/UI → submit/load → limit or step error → shutdown/free → UI
 
 Gap analysis: Report exhaustion; retain runtime when unsafe to free; no silent truncate.
 
-## Pass 2 findings
+## Pass 2 findings (resolved by pass 3 contracts)
 
 - Atomic save needs a post-rename durability outcome distinct from ordinary IO.
 - Credential grammar and file line rules need exact specification.
-- Runtime has no documented numeric idle ID; use public display status.
+- Runtime has no documented numeric idle ID; use public display status plus
+  committed nonzero assistant node identity. Active INCOMPLETE aggregates are
+  not terminal.
 - Reload publication is not activation; retain conservative selection labels.
 - Free after a fatal core driver result requires a supported drain route; tools
   remain disabled, and failure cleanup must be checked in implementation tests.
