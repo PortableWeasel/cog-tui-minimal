@@ -1,6 +1,7 @@
 # Stage 1 — Goals
 
-Status: Stage 1 agreed; Stage 3 cross-check complete for review. The target
+Status: minimum UI and Markdown implementation stages complete, with validation
+and explicit acceptance limits recorded in `VALIDATION.md`. The target
 is a minimum viable UI for real work:
 run `cog-tui`, configure once, then return directly to a usable prompt.
 

@@ -7,7 +7,7 @@ uses installed public application/core APIs; Cog source is unchanged.
 
 ## Build and run
 
-Requires CMake, a C11 compiler, readline development files, and a compatible
+Requires CMake, a C11 compiler, readline development files, a UTF-8 locale, and a compatible
 installed Cog prefix with its audited networking dependencies.
 
 ```sh
@@ -42,10 +42,28 @@ reported as proof of activation. Errors require explicit fresh input, with no
 automatic resubmission. Tool execution and persistent conversation history are
 disabled in this minimum version.
 
-Use an ANSI/VT-compatible terminal. Assistant chunks join into a continuous
-message above a separator; the readline prompt stays on the bottom row while
-output scrolls. Long input scrolls horizontally. Draft text and its cursor are
-preserved during streaming and terminal resize.
+Use an ANSI/VT-compatible terminal with a non-dumb `TERM` and UTF-8 locale.
+Assistant messages render Markdown headings, emphasis, lists, quotations,
+links, code and tables above a separate readline input row. Open code blocks and
+tables have reversible visual boundaries while streaming; the original text
+stays unchanged. Unmatched inline syntax remains readable until it resolves.
+
+Ctrl-P and Ctrl-N page the conversation; Ctrl-T resumes following live output.
+Scrolling preserves the draft. Long input scrolls horizontally, and draft/cursor
+survive streaming and resize. Bracketed multiline pastes remain editable until
+Enter; the UI enables this for its session and restores readline settings.
+Terminal paste mode is explicitly disabled on exit, then its prior value restored
+where private-mode save/restore is supported. Completion menus and readline's auxiliary search display are
+suppressed so they cannot overwrite the conversation.
+
+The renderer uses pinned MD4C 0.5.2, privately vendored with its MIT license; no
+build-time download is needed. HTML and entities remain literal. Table overflow
+or renderer limits switch to an explicitly labeled plain view, preserving the
+source. CJK and supported combining clusters use display-cell widths; unsupported
+emoji/format characters use visible escapes. Input combining marks are escaped
+for deterministic cursor placement. Syntax highlighting, images, interactive
+links and speculative inline closure are deferred. Ncursesw is also deferred
+pending its full readline ownership probe; the styled-row API is backend-neutral.
 
 To reuse Pi's OpenRouter key and default model, launch from this checkout:
 
@@ -68,10 +86,24 @@ overrides the launcher's settings directory. `--mock` runs the offline fixture
 with the imported selection. `--help` prints launcher usage.
 
 Run `cog-tui --mock` for an explicit offline terminal fixture. Its delayed mock
-chunks exercise editing, cancellation and continuation; they do not call a real
-provider. Mock model names can be changed through `/settings`.
+chunks exercise editing and cancellation; they do not call a real
+provider. A post-cancellation mock turn can commit an empty response, which the UI
+shows exactly as exposed by the public snapshot. Mock model names can be changed through `/settings`.
 
 ## Update the installed commands
+
+To update only the UI against the existing installed Cog dependency:
+
+```sh
+cmake --build build-real -j4
+ctest --test-dir build-real --output-on-failure
+cmake --install build-real --prefix "$PWD/install/stage-real"
+```
+
+This is the update path used for the Markdown release; it neither rebuilds nor
+changes Cog. The existing broader updater below remains available when you
+explicitly want both local installations rebuilt.
+
 
 From this checkout, run:
 
@@ -123,7 +155,21 @@ Development follows `software-blueprint` and `cog-dev`, with tix tracking the
 remaining validation and integration work. Live provider acceptance is separate
 from offline/mock and construction tests.
 
-The [streaming Markdown blueprint](docs/markdown/BLUEPRINT.md) plans reversible
-partial-syntax previews and a backend-neutral renderer suitable for ncursesw.
-It includes draft headers, scenario traces, an architecture diagram and staged
-implementation gates. This is planned work; the installed renderer is plain text.
+The [streaming Markdown blueprint](docs/markdown/BLUEPRINT.md) records the
+architecture, scenarios, parser research and implementation decisions. See
+[screen ownership evidence](docs/markdown/SCREEN_RESEARCH.md) and
+[integration review](docs/markdown/TRANSCRIPT_REVIEW.md) for the shipped boundary.
+
+An optional live diagnostic is deliberately excluded from CTest:
+
+```sh
+cmake --build build-real --target live-acceptance
+./scripts/cog-live-check --allow-paid
+```
+
+It makes at most two short requests using Pi's selected OpenRouter account and
+checks multi-turn recall in authoritative public snapshots. It writes only
+numeric/boolean results to `build/live-acceptance/authoritative.json`, including
+partial results on failure. It never prints or stores credentials or provider
+response text and never retries a request. This diagnoses runtime/provider
+behavior separately from the deterministic UI/Markdown tests.

@@ -1,9 +1,13 @@
 # Streaming Markdown rendering blueprint
 
-Status: planning deliverable, 2026-11-17. No renderer implementation, dependency
-installation, backend switch, or installed-binary update is part of this change.
-This extends the minimum UI; its current ANSI/readline renderer stays operational.
-Tracked by tix `a3f86e2`. Implementation is split into dependency-gated tickets.
+Status: implementation progressed through M1–M5 on 2026-11-17. MD4C 0.5.2 is
+pinned privately; Markdown layout, the ANSI screen, public-snapshot integration,
+bounded caches, plain fallback and draft-preserving paging are implemented.
+M6 selects the documented ncurses deferral; its full readline ownership gate is
+not passed. M7 final release validation is tracked in tix. This document retains
+the design rationale below; executable evidence is in PARSER_RESEARCH.md,
+SCREEN_RESEARCH.md and TRANSCRIPT_REVIEW.md. Production headers are under
+`include/cog_tui/`; the `docs/markdown/include/` copies are historical drafts.
 
 ## 1. Goals and acceptance boundary
 
@@ -129,7 +133,7 @@ shows a need and invalidation semantics are documented.
 
 ## 5. Parser choice and research gates
 
-Provisional choice: **MD4C behind a private adapter**, with explicit tables and
+Selected after the prefix/provenance probe: **MD4C 0.5.2 behind a private adapter**, with explicit tables and
 HTML-disabled options. It is C, supports callbacks and avoids requiring an
 application AST. Its API parses a whole input document; callback delivery is
 not an incremental streaming-parser contract. Coalesced whole-prefix parsing
@@ -142,8 +146,7 @@ is our design. [MD4C project](https://github.com/mity/md4c).
 | Handwritten full Markdown parser | No external parser | Reject: larger correctness burden; keep only narrowly scoped preview hints |
 
 The alternative is [GitHub's cmark-gfm](https://github.com/github/cmark-gfm).
-No parser is vendored or linked by this planning change. At implementation,
-pin an audited release/commit and license in this repository. Keep its build,
+MD4C is pinned in `vendor/md4c` with provenance hashes and its MIT license. Keep its build,
 configuration and dependency artifacts independent of Cog.
 
 Before selecting the parser, run a throwaway prefix-matrix probe: fenced code,
@@ -308,6 +311,7 @@ alone does not prove any behavior described here.
   documented plain fallback and explicit capability choice. Update docs before
   reinstalling. No paid/live provider request is needed for renderer acceptance.
 
-Planning completion means the contracts and work queue are reviewable. Parser
-choice, ncurses composition, latency and Unicode behavior remain evidence gates;
-this document does not mark them as implemented or validated.
+Implementation evidence is recorded separately from these design targets. The
+shipped ANSI backend passed deterministic ownership/cell tests; ncurses remains
+deferred. Performance observations are corpus measurements, not hard latency
+guarantees. Live provider correctness remains a separate acceptance result.

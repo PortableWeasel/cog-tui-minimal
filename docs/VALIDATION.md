@@ -1,31 +1,54 @@
 # Validation status
 
-## Completed evidence
+## Markdown release evidence
 
-- Continuous streaming layout: one assistant label per message, output above a
-  separator and a fixed readline input row. A libvterm screen-emulation PTY test
-  checks concatenated response cells, draft/cursor preservation during chunks,
-  resize, wrapped messages, scrolling, long input, settings prompts and cleanup.
-  `libvterm` is an optional test-only dependency; CTest skips this check when it
-  is absent. Normal GCC and Clang ASan/UBSan suites pass all 14 current tests.
+The current suite has 20 CTest cases: pure Markdown, deterministic prefix fuzz,
+allocation failure, screen contracts/cells, transcript reconciliation, settings,
+runtime, Pi launcher, terminal integration, and nine failure paths. All UI
+production headers compile standalone under strict C11 warnings. The vendored
+MD4C source is pinned and instrumented in sanitizer builds; its upstream warnings
+are suppressed independently from the strict UI adapter build.
 
-- Three header/scenario passes plus independent contract review before implementation.
-- Installed public Cog app embedding probe and readline PTY draft-preservation probe.
-- GCC strict C11/Werror build; standalone compilation of every UI public header.
-- Settings suite: defaults, URL/reference validation, bounded parser and malformed
-  files, permissions/symlinks, atomic save/load and restrictive umask.
-- Runtime suite: empty initialization run, multi-turn snapshots, double-submit
-  exclusion, reload publication, cancellation, graceful shutdown and destructor
-  lifecycle.
-- PTY suite: initial mock readiness, streaming, cancellation after partial output,
-  fresh continuation with a shorter response, third turn, settings change/save,
-  resize while editing, terminal mode restoration, exit and relaunch restoring
-  the saved model.
-- Normal install and installed `--help` smoke.
+Final full-suite execution passed **20/20 normal GCC tests in 7.46 seconds** and
+**20/20 Clang ASan/UBSan tests in 14.39 seconds**, with
+`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1` and
+`UBSAN_OPTIONS=halt_on_error=1`. Both runs include the local loopback TLS failure
+fixture. The final runs used the required permission for loopback sockets and
+LeakSanitizer, superseding earlier restricted-sandbox runs that omitted those
+gates. Logs are `build-real/ctest.log` and `build-final-asan/ctest.log`.
 
-GCC and Clang ASan/UBSan passed all twelve final CTest cases with the compatible
-external dependency profile, including REAL construction without submission. Sanitizers instrument this UI; the existing Cog
-installation is not rebuilt with sanitizers by those flags.
+Independent critic review approved the renderer and screen/integration after
+four findings were corrected. The final UI was installed to
+`install/stage-real/bin/cog-tui`, reached through the existing PATH symlink;
+the installed streaming/cursor/resize/scrolling/cleanup PTY test passed.
+Only the UI was rebuilt and installed during this Markdown release.
+
+Executed coverage includes:
+
+- Markdown headings, emphasis, code, tables, links, lists/quotes; every-prefix
+  rendering, provisional EOF boundaries, exact final convergence, Unicode/control
+  sanitation, bounded layouts, table-overflow/plain fallback and allocation errors.
+- Stable active-to-committed UI identity, equal-length edits, shrinking final text,
+  phase-only completion/cancellation, fatal active prefixes, replay generations,
+  scroll anchors through reflow, duplicate durable IDs and oversized uncached source.
+- Actual libvterm cells: separated prompt, semantic text, Unicode widths, draft and
+  byte cursor during asynchronous output/resize, horizontal input clipping,
+  Ctrl-P/Ctrl-N paging, Ctrl-T live return, and hidden Ctrl-L output suppression.
+- Bracketed-paste enable/explicit-disable/attempted-restore and multiline paste
+  retained as a draft, including an inputrc that initially disables it. Actual
+  libvterm paste API assertions verify enabled/disabled state. Prior-on mode
+  restoration requires terminal private-mode save/restore support.
+- Existing setup/settings/reload, credentials-by-reference, file permissions,
+  cancellation, EOF/signals, output hangup, save retry and terminal restoration.
+
+`libvterm` is optional and test-only; cell tests return skip code 77 when absent.
+Readline completion menus and auxiliary search display are deliberately suppressed.
+Ncursesw was not selected: the full hidden-writer/keymap ownership probe remains
+incomplete. See [screen findings](markdown/SCREEN_RESEARCH.md) and
+[integration review](markdown/TRANSCRIPT_REVIEW.md).
+
+No Cog source or dependency rebuild is needed for this release. UI sanitizer
+flags instrument UI and vendored MD4C, not the existing installed Cog libraries.
 
 ## Dependency profile finding
 
@@ -43,14 +66,43 @@ REAL constructor/snapshot/shutdown passed using a fabricated test credential,
 without submitting a prompt or sending a provider request. Installed executable
 PTY tests also passed. No admission checks were bypassed.
 
-## Not yet claimed
+## Live provider acceptance and limitations
 
-No paid/live provider request has been sent. Real multi-turn network acceptance
-and system-prompt/tool behavior are unverified. Tool execution is disabled.
-The sixteen scenario traces map to grouped executable checks below, rather
-than sixteen one-to-one CTest entries. Arbitrary provider failure timing and
-every shutdown race are not exhaustively tested. Output hangup checks bounded
-nonzero exit; it cannot capture sanitizer diagnostics after the terminal is lost.
+Four paid provider requests were made during this acceptance session; none were
+retried automatically. The initial two-request terminal probe observed first
+visible output at 0.410 and 0.907 seconds and preserved its input draft. Its raw
+ANSI matcher did not find the recall marker, so that probe stopped before its
+planned cancellation request. This extraction result was inconclusive.
+
+The subsequent two-request `scripts/cog-live-check --allow-paid` diagnostic
+checked authoritative public runtime snapshots and passed with exit status 0:
+
+| Request | Public outcome | First visible prefix | Final bytes | Observed nonempty prefixes |
+|---|---|---|---|---|
+| Remember marker; acknowledge | Committed COMPLETE; expected acknowledgment found | 1,080 ms | 3 | 1 |
+| Recall marker | Committed COMPLETE; exact marker found | 432 ms | 9 | 1 |
+
+The report records `authoritative_marker: true`, `cleanup_complete: true`, no
+error and no timeout. Its sanitized numeric/boolean evidence is in
+`build/live-acceptance/authoritative.json`; it contains no provider response text
+or credential. This establishes two-turn recall through the public runtime API,
+not a claim about private provider-history internals. These short responses each
+had only one observed nonempty prefix, so they do not establish fine-grained
+streaming behavior on their own. Deterministic PTY tests cover incremental UI
+rendering, and the separate terminal probe observed live output with a preserved
+draft.
+
+**Live cancellation was not exercised.** Cancellation/fresh-input/terminal cleanup
+have offline mock and signal-test coverage. Restart readiness using Pi's actual
+settings was established by earlier constructor/relaunch checks; the direct
+snapshot diagnostic did not add another interactive restart test.
+
+Tool execution remains disabled. The public reload API confirms publication for
+a future turn, not activation of that selection. Arbitrary provider failure timing
+and every shutdown race are not exhaustively tested. Output-hangup tests check
+bounded nonzero exit but cannot capture diagnostics after the terminal is lost.
+Cog's deterministic mock can commit an empty post-cancellation response; the UI
+preserves that exact public result rather than fabricating continuation text.
 
 ## Reproducing the local compatible profile
 
@@ -58,15 +110,16 @@ Rebuilt and installed on 2026-11-17 from Cog commit
 `5ce5820003e32d6ae0d15052f881cca05e00b881`, without changing Cog source.
 Cog's installed CLI is `install/cog/bin/cog-cli`; the installed UI is
 `install/stage-real/bin/cog-tui`. GCC and Clang ASan/UBSan UI suites each passed
-all 13 current tests, including the Pi launcher. The loopback test requires
+the then-current 13 tests, including the Pi launcher. The loopback test requires
 socket access outside the restricted sandbox. Installed UI PTY checks passed;
 the Pi launcher also reached REAL readiness using the actual Pi settings and
 exited cleanly without submitting a prompt. Cog's installed CLI passed its
 offline mock smoke check. These installs retain the external audited curl and
 c-ares dependency paths; keep `../cog/build-deps` available.
 
-This workspace's successful construction tests used unchanged Cog source and
-its existing audited curl build. From the UI checkout:
+The following historical dependency setup used unchanged Cog source and its
+existing audited curl build. It is not rerun for the Markdown/UI-only update.
+From the UI checkout:
 
 ```sh
 cog_source=/home/user/ws-2611/cog
