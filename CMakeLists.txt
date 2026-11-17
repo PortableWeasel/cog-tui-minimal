@@ -31,7 +31,13 @@ if(BUILD_TESTING)
  target_link_libraries(runtime-test PRIVATE tui)
  add_test(NAME runtime COMMAND runtime-test)
  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+ add_test(NAME pi-launcher COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/pi_launcher_test.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/scripts/cog-tui-pi ${CMAKE_CURRENT_BINARY_DIR})
  add_test(NAME terminal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/terminal_test.py $<TARGET_FILE:cog-tui>)
+ add_test(NAME streaming-screen COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/streaming_screen_test.py $<TARGET_FILE:cog-tui>)
+ set_tests_properties(streaming-screen PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
  set_tests_properties(settings runtime terminal PROPERTIES TIMEOUT 30)
  foreach(scenario first-run credential-recovery provider-failure eof sigint-idle sigterm-active sigint-active output-hangup save-retry)
   add_test(NAME failure-${scenario} COMMAND ${Python3_EXECUTABLE}

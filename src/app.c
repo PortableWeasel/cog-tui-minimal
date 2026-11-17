@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -29,6 +30,8 @@ typedef struct app {
       published_model[COG_TUI_VALUE_CAPACITY];
   bool pending_selection;
   uint64_t baseline;
+  unsigned rows, columns;
+  bool response_open;
 } app_t;
 /* Readline exposes no callback user-data. One bounded lifetime binding only. */
 static app_t *binding;
@@ -42,15 +45,46 @@ static void on_line(char *line) {
   } else
     free(line);
 }
+/* The saved terminal cursor belongs to output; readline owns the bottom row. */
+static void output_begin(app_t *a) {
+  fputs("\0338", a->output);
+}
+static void input_redraw(app_t *a) {
+  fprintf(a->output, "\033[%u;1H\033[2K", a->rows);
+  rl_on_new_line();
+  rl_forced_update_display();
+  fflush(a->output);
+}
+static void output_end(app_t *a) {
+  fputs("\0337", a->output);
+  input_redraw(a);
+}
+static void layout(app_t *a) {
+  struct winsize size = {0};
+  (void)ioctl(STDIN_FILENO, TIOCGWINSZ, &size);
+  unsigned rows = size.ws_row >= 4 ? size.ws_row : 24u;
+  unsigned columns = size.ws_col >= 10 ? size.ws_col : 80u;
+  if (rows == a->rows && columns == a->columns)
+    return;
+  a->rows = rows;
+  a->columns = columns;
+  rl_resize_terminal();
+  fprintf(a->output, "\033[r\033[2J\033[1;%ur"
+                     "\033[%u;1H\033[2K%.*s\033[1;1H",
+          rows - 2u, rows - 1u, (int)(columns - 1u), "--- input ---");
+  a->response_open = false;
+  memset(a->rendered, 0, sizeof(a->rendered));
+  output_end(a);
+}
 static void say(app_t *a, const char *text) {
-  rl_save_prompt();
-  rl_crlf();
+  output_begin(a);
+  if (a->response_open) {
+    fputs("\n", a->output);
+    a->response_open = false;
+  }
   fputs(text, a->output);
   fputc('\n', a->output);
-  rl_restore_prompt();
-  rl_on_new_line();
-  rl_redisplay();
-  fflush(a->output);
+  output_end(a);
 }
 static void error_message(app_t *a, const char *operation, cog_result_t rc) {
   char msg[160];
@@ -80,8 +114,7 @@ static void prompt(app_t *a) {
     p = prompts[a->field];
   }
   rl_set_prompt(p);
-  rl_on_new_line();
-  rl_redisplay();
+  input_redraw(a);
 }
 static void start_runtime(app_t *a) {
   cog_result_t rc = cog_tui_runtime_new(&a->runtime, &a->settings, &a->options);
@@ -250,29 +283,36 @@ static cog_result_t render(app_t *a) {
     return COG_ERROR_LIMIT;
   for (size_t i = 0; i < v.item_count; i++) {
     const cog_cli_display_item_t *item = &v.items[i];
-    if (item->role != COG_MESSAGE_ROLE_ASSISTANT) {
-      a->rendered[i] = 0;
-      a->finished[i] = false;
-      a->identities[i] = item->node_id;
+    if (item->role != COG_MESSAGE_ROLE_ASSISTANT &&
+        item->role != COG_MESSAGE_ROLE_USER)
       continue;
-    }
     if (a->identities[i] != item->node_id && a->identities[i] != 0) {
       a->rendered[i] = 0;
       a->finished[i] = false;
     }
     a->identities[i] = item->node_id;
-    if (item->text_len > a->rendered[i]) {
-      rl_save_prompt();
-      rl_crlf();
-      fputs("assistant: ", a->output);
+    bool wrote = item->text_len > a->rendered[i];
+    if (wrote) {
+      output_begin(a);
+      if (!a->rendered[i])
+        fputs(item->role == COG_MESSAGE_ROLE_ASSISTANT ? "assistant: " : "you: ",
+              a->output);
       escaped(a->output, item->text + a->rendered[i],
               item->text_len - a->rendered[i]);
-      fputc('\n', a->output);
-      rl_restore_prompt();
-      rl_on_new_line();
-      rl_redisplay();
-      fflush(a->output);
+      a->response_open = true;
+      output_end(a);
       a->rendered[i] = item->text_len;
+    }
+    if (item->node_id && (wrote || !a->finished[i])) {
+      output_begin(a);
+      if (a->response_open)
+        fputs("\n\n", a->output);
+      a->response_open = false;
+      output_end(a);
+    }
+    if (item->role != COG_MESSAGE_ROLE_ASSISTANT) {
+      a->finished[i] = item->node_id != 0;
+      continue;
     }
     if (item->node_id && !a->finished[i]) {
       a->finished[i] = true;
@@ -424,8 +464,12 @@ int cog_tui_app_run(int argc, char **argv) {
   rl_instream = stdin;
   int old_catch = rl_catch_signals;
   rl_catch_signals = 0;
+  const char *horizontal = rl_variable_value("horizontal-scroll-mode");
+  bool old_horizontal = horizontal && !strcmp(horizontal, "on");
+  (void)rl_variable_bind("horizontal-scroll-mode", "on");
   binding = &a;
   rl_callback_handler_install("cog> ", on_line);
+  layout(&a);
   command_help(&a);
   if (loaded == COG_OK || mock)
     start_runtime(&a);
@@ -437,6 +481,7 @@ int cog_tui_app_run(int argc, char **argv) {
   int result = 0;
   bool done = false;
   while (!done) {
+    layout(&a);
     if (interrupted) {
       int signum = interrupted;
       interrupted = 0;
@@ -500,6 +545,8 @@ int cog_tui_app_run(int argc, char **argv) {
   }
   free(a.line);
   rl_callback_handler_remove();
+  fprintf(a.output, "\033[r\033[%u;1H\033[2K\r\n", a.rows);
+  (void)rl_variable_bind("horizontal-scroll-mode", old_horizontal ? "on" : "off");
   binding = NULL;
   rl_catch_signals = old_catch;
   rl_outstream = old_out;

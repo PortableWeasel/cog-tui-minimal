@@ -1,0 +1,144 @@
+#!/bin/sh
+# Rebuild the local checkouts and refresh the installed PATH commands.
+set -eu
+
+usage() {
+    cat <<'EOF'
+Usage: cog-update [--sanitizers]
+
+Build Cog, install its public libraries/CLI, then build, test and install Cog TUI.
+Run from any directory. Uses current source files; does not pull from git.
+--sanitizers also runs the Clang ASan/UBSan TUI suite before installing the TUI.
+
+Environment overrides:
+  COG_SOURCE_DIR        Cog checkout (default: sibling ../cog)
+  COG_CURL_BUILD_DIR    Audited curl build (default: Cog's build-deps/curl)
+  COG_CURL_INCLUDE_DIR  curl headers (default: Cog's curl-8.23.0 source headers)
+  COG_UPDATE_JOBS       Build parallelism (default: 4)
+  COG_BIN_DIR           PATH symlink directory (default: ~/.local/bin)
+
+Builds/logs remain in build-cog, build-real and build-final-asan in the TUI
+checkout. Installs remain in install/cog and install/stage-real. Existing
+unrelated PATH commands are never replaced. Restart running apps after updating.
+EOF
+}
+
+sanitizers=no
+case "${1-}" in
+    --help|-h) usage; exit 0 ;;
+    --sanitizers) sanitizers=yes; shift ;;
+esac
+[ "$#" -eq 0 ] || { usage >&2; exit 2; }
+
+script_path=$(readlink -f -- "$0")
+repo=$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)
+cog_source=${COG_SOURCE_DIR:-"$repo/../cog"}
+curl_build=${COG_CURL_BUILD_DIR:-"$cog_source/build-deps/curl"}
+curl_include=${COG_CURL_INCLUDE_DIR:-"$cog_source/build-deps/source/curl-8.23.0/include"}
+jobs=${COG_UPDATE_JOBS:-4}
+bin_dir=${COG_BIN_DIR:-"$HOME/.local/bin"}
+case "$jobs" in
+    ''|*[!0-9]*|0) echo 'COG_UPDATE_JOBS must be a positive integer' >&2; exit 2 ;;
+esac
+# Canonical paths also make invocation from a different working directory safe.
+cog_source=$(CDPATH= cd -- "$cog_source" && pwd)
+curl_build=$(CDPATH= cd -- "$curl_build" && pwd)
+curl_include=$(CDPATH= cd -- "$curl_include" && pwd)
+curl_library="$curl_build/lib/libcurl.so"
+for required in "$cog_source/CMakeLists.txt" "$curl_library" "$curl_include/curl/curl.h"; do
+    [ -f "$required" ] || { echo "Missing required file: $required" >&2; exit 2; }
+done
+for program in cmake ctest python3; do
+    command -v "$program" >/dev/null || { echo "Missing command: $program" >&2; exit 2; }
+done
+if [ "$sanitizers" = yes ]; then
+    command -v clang >/dev/null || { echo 'Missing command: clang' >&2; exit 2; }
+fi
+
+# Check every destination before doing builds or changing any links.
+links() {
+    python3 - "$repo" "$bin_dir" "$1" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+root, directory = (Path(value).expanduser().absolute() for value in sys.argv[1:3])
+targets = {
+    'cog-cli': root / 'install/cog/bin/cog-cli',
+    'cog-tui': root / 'install/stage-real/bin/cog-tui',
+    'cog-tui-pi': root / 'scripts/cog-tui-pi',
+    'cog-update': root / 'scripts/cog-update',
+}
+for name, target in targets.items():
+    link = directory / name
+    if os.path.lexists(link) and (not link.is_symlink() or link.resolve() != target.resolve()):
+        raise SystemExit(f'Refusing to replace unrelated PATH command: {link}')
+if sys.argv[3] == 'install':
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, target in targets.items():
+        if not target.is_file() or not os.access(target, os.X_OK):
+            raise SystemExit(f'Missing installed executable: {target}')
+        link = directory / name
+        if not link.is_symlink():
+            link.symlink_to(target)
+PY
+}
+links check
+
+mkdir -p "$repo/build-cog" "$repo/build-real"
+run() {
+    log=$1
+    description=$2
+    shift 2
+    printf '%s\n' "$description"
+    if ! "$@" >"$log" 2>&1; then
+        cat "$log" >&2
+        printf 'Update stopped. Log: %s\n' "$log" >&2
+        exit 1
+    fi
+}
+
+run "$repo/build-cog/configure.log" 'Configuring Cog...' \
+    cmake -S "$cog_source" -B "$repo/build-cog" \
+    -DCOG_USE_VENDORED_LIBS=OFF -DBUILD_TESTING=OFF -DCOG_ENABLE_WERROR=ON \
+    -DCOG_BUILD_CLI=ON -DCOG_ENABLE_ASAN=OFF -DCOG_ENABLE_TSAN=OFF \
+    "-DCOG_NET_CURL_BUILD_DIR=$curl_build" "-DCOG_NET_CURL_LIBRARY=$curl_library" \
+    "-DCMAKE_INSTALL_RPATH=$curl_build/lib" "-DCMAKE_INSTALL_PREFIX=$repo/install/cog"
+run "$repo/build-cog/build.log" 'Building Cog...' \
+    cmake --build "$repo/build-cog" --target cog-cli -j "$jobs"
+run "$repo/build-cog/install.log" 'Installing Cog and public libraries...' \
+    cmake --install "$repo/build-cog"
+
+configure_tui() {
+    cmake -S "$repo" -B "$1" "-DCMAKE_PREFIX_PATH=$repo/install/cog" \
+        -DBUILD_TESTING=ON "-DTUI_SANITIZERS=$2" -DCURL_NO_CURL_CMAKE=ON \
+        "-DCURL_INCLUDE_DIR=$curl_include" "-DCURL_LIBRARY_RELEASE=$curl_library" \
+        "-DCURL_LIBRARY_DEBUG=$curl_library" ${3:+"-DCMAKE_C_COMPILER=$3"}
+}
+run "$repo/build-real/configure.log" 'Configuring Cog TUI...' \
+    configure_tui "$repo/build-real" OFF
+run "$repo/build-real/build.log" 'Building Cog TUI...' \
+    cmake --build "$repo/build-real" -j "$jobs"
+run "$repo/build-real/ctest.log" 'Testing Cog TUI (includes local loopback socket test)...' \
+    ctest --test-dir "$repo/build-real" --output-on-failure
+
+if [ "$sanitizers" = yes ]; then
+    mkdir -p "$repo/build-final-asan"
+    run "$repo/build-final-asan/configure.log" 'Configuring sanitizer checks...' \
+        configure_tui "$repo/build-final-asan" ON clang
+    run "$repo/build-final-asan/build.log" 'Building sanitizer checks...' \
+        cmake --build "$repo/build-final-asan" -j "$jobs"
+    run "$repo/build-final-asan/ctest.log" 'Running ASan/UBSan checks...' \
+        env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
+        ctest --test-dir "$repo/build-final-asan" --output-on-failure
+fi
+
+run "$repo/build-real/install.log" 'Installing Cog TUI...' \
+    cmake --install "$repo/build-real" --prefix "$repo/install/stage-real"
+run "$repo/build-cog/smoke.log" 'Checking installed Cog...' \
+    "$repo/install/cog/bin/cog-cli" --mock --no-store --prompt smoke --chunks installed
+run "$repo/build-real/smoke.log" 'Checking installed Cog TUI...' \
+    "$repo/install/stage-real/bin/cog-tui" --help
+links install
+printf 'Updated cog-cli, cog-tui, cog-tui-pi and cog-update in %s\n' "$bin_dir"
+printf 'Restart cog-tui-pi to use the new build.\n'

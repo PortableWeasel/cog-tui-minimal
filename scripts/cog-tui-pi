@@ -1,0 +1,98 @@
+#!/bin/sh
+# Launch Cog TUI with Pi's current OpenRouter model and credential.
+set -eu
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 - "$script_dir/.." "$@" 3<&0 <<'PY'
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+import tempfile
+
+
+def fail(message):
+    print("cog-tui-pi: " + message, file=sys.stderr)
+    sys.exit(2)
+
+
+def private(path, directory=False):
+    info = path.lstat()
+    kind = stat.S_ISDIR if directory else stat.S_ISREG
+    if not kind(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        fail("configuration path must be private, owned by you, and not a symlink")
+
+
+try:
+    root = Path(sys.argv[1]).resolve()
+    args = sys.argv[2:]
+    if "--help" in args:
+        print("Usage: cog-tui-pi [--mock]\n"
+              "Reads PI_CODING_AGENT_DIR (default ~/.pi/agent).\n"
+              "COG_TUI_BIN overrides the executable; COG_TUI_CONFIG_DIR overrides\n"
+              "the private settings directory (default ~/.cog-tui-pi).\n"
+              "Refreshes the saved model from Pi on every launch.")
+        sys.exit(0)
+    if any(arg != "--mock" for arg in args):
+        fail("unsupported option; use --help (set COG_TUI_CONFIG_DIR for settings)")
+    binary = os.environ.get("COG_TUI_BIN")
+    if not binary:
+        candidates = [root / name for name in (
+            "build-real/cog-tui", "build/cog-tui",
+            "install/stage-real/bin/cog-tui", "install/stage/bin/cog-tui")]
+        binary = next((str(p) for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)
+        binary = binary or shutil.which("cog-tui")
+    if not binary:
+        fail("build cog-tui first or set COG_TUI_BIN to its executable")
+    resolved = shutil.which(binary)
+    if not resolved:
+        fail("COG_TUI_BIN must name an executable")
+    agent = Path(os.environ.get("PI_CODING_AGENT_DIR", "~/.pi/agent")).expanduser()
+    settings = json.loads((agent / "settings.json").read_text())
+    if settings.get("defaultProvider") != "openrouter":
+        fail("Pi's defaultProvider must be openrouter")
+    model = settings.get("defaultModel")
+    if (not isinstance(model, str) or not model or len(model.encode()) >= 1024
+            or any(ord(c) < 32 or ord(c) == 127 for c in model)):
+        fail("Pi's defaultModel must be a nonempty, single-line model ID under 1024 bytes")
+    auth = json.loads((agent / "auth.json").read_text()).get("openrouter", {})
+    key = auth.get("key")
+    if auth.get("type") != "api_key" or not isinstance(key, str) or not key:
+        fail("Pi must have an OpenRouter api_key entry in auth.json")
+    if key.startswith("!"):
+        fail("Pi command-based credentials are unsupported; use a literal key or environment variable name")
+    key = os.environ.get(key, key)
+    if not key.strip() or "\0" in key:
+        fail("Pi's OpenRouter credential is empty or invalid")
+    directory = Path(os.environ.get("COG_TUI_CONFIG_DIR", "~/.cog-tui-pi")).expanduser().absolute()
+    directory.mkdir(mode=0o700, exist_ok=True)
+    private(directory, directory=True)
+    target = directory / "settings"
+    if os.path.lexists(target):
+        private(target)
+    contents = ("version=1\nprovider=openrouter\nmodel=" + model
+                + "\nbase_url=https://openrouter.ai/api/v1\n"
+                "credential_ref=env:OPENROUTER_API_KEY\n")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as stream:
+            temporary = stream.name
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        temporary = None
+    finally:
+        if temporary is not None:
+            os.unlink(temporary)
+    environment = os.environ.copy()
+    environment["OPENROUTER_API_KEY"] = key
+    # Python consumed the script from stdin; restore the caller's terminal/input.
+    os.dup2(3, 0)
+    os.close(3)
+    os.execve(resolved, [resolved, "--config-dir", str(directory), *args], environment)
+except (OSError, ValueError, TypeError, AttributeError):
+    # Never print JSON contents or exception details that might contain a key.
+    fail("cannot read Pi settings/auth, save private settings, or launch cog-tui")
+PY

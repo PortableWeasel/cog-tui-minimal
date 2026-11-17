@@ -22,6 +22,11 @@ extern "C" {
  * prompt text and credentials are never persisted as readline history. Rendering
  * escapes terminal controls in untrusted Cog text. Keep streaming progress while
  * editing and preserve draft/cursor across redraw. No implicit prompt replay.
+ * ANSI/VT-compatible terminal required. Output scrolls above a separator and
+ * a single-row, horizontally scrolling readline prompt. Each assistant message
+ * has one label; streaming deltas concatenate without inserted whitespace.
+ * Resize repaints the public snapshot, preserving the input draft and cursor.
+ * Restore the full terminal scrolling region before returning.
  */
 int cog_tui_app_run(int argc, char **argv);
 #ifdef __cplusplus

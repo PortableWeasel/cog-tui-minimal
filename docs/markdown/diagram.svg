@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="760" viewBox="0 0 1040 760" role="img" aria-labelledby="title desc">
+  <title id="title">Streaming Markdown architecture</title>
+  <desc id="desc">Existing public Cog snapshots enter a planned pure Markdown renderer, then one selected screen backend combines styled output with readline input. Provisional closures never return to Cog.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#344256"/></marker>
+    <style>text{font-family:Arial,sans-serif;fill:#152238;font-size:15px}.heading{font-size:23px;font-weight:bold}.label{font-weight:bold}.small{font-size:13px}.box{stroke:#344256;stroke-width:1.5;rx:10}.edge{fill:none;stroke:#344256;stroke-width:2;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1040" height="760" fill="#fff"/>
+  <text x="30" y="36" class="heading">Streaming Markdown: exact source, reversible preview, one screen owner</text>
+  <rect x="20" y="60" width="1000" height="580" rx="16" fill="#eff6ff" stroke="#3b5f92" stroke-width="2" stroke-dasharray="8 5"/>
+  <text x="36" y="84" class="label">Cog TUI process · installed public APIs only · owner-thread event loop</text>
+  <rect x="45" y="110" width="260" height="100" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#d9f0df"/>
+  <text x="60" y="136" class="label">Existing Cog runtime adapter</text>
+  <text x="60" y="160">Borrowed display snapshot</text><text x="60" y="183" class="small">Exact message bytes + public status</text>
+  <rect x="365" y="110" width="290" height="100" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#fff0bd"/>
+  <text x="380" y="136" class="label">App reconciliation + scheduling</text>
+  <text x="380" y="160">message key · revision · phase</text><text x="380" y="183" class="small">Coalesce frames; cache completed messages</text>
+  <path d="M305 160 H365" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="700" y="110" width="290" height="100" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#d9f0df"/>
+  <text x="715" y="136" class="label">Readline editing</text>
+  <text x="715" y="160">Draft bytes + cursor byte index</text><text x="715" y="183" class="small">Custom bridge; no direct terminal writes</text>
+  <rect x="45" y="250" width="610" height="180" rx="12" fill="#eae0fa" stroke="#7956a4"/>
+  <text x="62" y="277" class="label">Pure Markdown/layout module · no terminal library types</text>
+  <rect x="65" y="298" width="260" height="108" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#fff0bd"/>
+  <text x="80" y="324" class="label">EOF preview + parser adapter</text>
+  <text x="80" y="348">Exact prefix / disposable suffix</text><text x="80" y="373" class="small">MD4C provisional; bounded plain fallback</text>
+  <rect x="365" y="298" width="270" height="108" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#fff0bd"/>
+  <text x="380" y="324" class="label">Width-aware row layout</text>
+  <text x="380" y="348">Owned UTF-8 runs · semantic styles</text><text x="380" y="373" class="small">Code/table edges may be provisional</text>
+  <path d="M510 210 V230 H35 V353 H65" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M325 353 H365" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="700" y="250" width="290" height="180" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#fff0bd"/>
+  <text x="715" y="277" class="label">Screen compositor + viewport</text>
+  <text x="715" y="303">Visible message frame slices</text><text x="715" y="328">Plain status + input view</text><text x="715" y="353">Follow tail / paused scroll</text><text x="715" y="385" class="small">No retained snapshot pointers</text>
+  <path d="M845 210 V250" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M655 340 H700" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="45" y="476" width="610" height="120" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#fff0bd"/>
+  <text x="60" y="503" class="label">One selected backend owns the complete terminal</text>
+  <text x="60" y="530">ANSI initially · optional ncursesw after readline integration PoC</text>
+  <text x="60" y="555">Output region | separator/status | prompt + physical cursor</text>
+  <text x="60" y="579" class="small">No mixed writers; reset attributes and restore modes on exit</text>
+  <path d="M845 430 V456 H510 V476" class="edge" fill="none" stroke="#344256" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="700" y="476" width="290" height="120" class="box" stroke="#344256" stroke-width="1.5" rx="10" fill="#ffe2df"/>
+  <text x="715" y="503" class="label">Evidence gates, still pending</text>
+  <text x="715" y="530">Prefix/provenance + latency probe</text><text x="715" y="555">Ncurses/readline single-writer PoC</text><text x="715" y="579" class="small">UTF-8 widths · fuzz · PTY · sanitizers</text>
+  <text x="36" y="625" class="small">Green: existing capability · Yellow: planned work · Purple: module boundary · Red: unverified gate</text>
+  <text x="30" y="670" class="label">Draft header map</text>
+  <text x="30" y="697">markdown.h → source/phase/limits → immutable frame/view/row/run → no curses or readline types</text>
+  <text x="30" y="721">screen.h → screen/scene/slice/input/geometry → exclusive terminal owner; borrows frames during present</text>
+  <text x="30" y="745" class="small">Synthetic syntax and visual borders are preview data only. Nothing writes repaired content back to Cog.</text>
+</svg>

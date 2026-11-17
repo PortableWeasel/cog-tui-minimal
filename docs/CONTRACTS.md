@@ -16,6 +16,17 @@ Provider choice is OpenRouter in this release; mock is explicitly a test mode.
 Tools and persistent Cog sessions are disabled. The current conversation remains
 in Cog's app and its public display snapshot, avoiding a duplicate transcript.
 
+Terminal rendering uses an ANSI scrolling region above the last two rows. The
+penultimate row separates output from a horizontally scrolling readline input.
+Output cursor save/restore brackets readline redisplay; input bytes and cursor
+remain owned by readline. A message receives one role label, followed by escaped
+snapshot deltas without added spaces/newlines until completion. Committed
+messages end with a blank line. Resize rebuilds the display from the public
+snapshot rather than retaining another transcript. Teardown restores the full
+scrolling region. Three preimplementation reviews covered layout/ownership,
+streaming and input scenarios, then resize/control escaping/terminal cleanup
+(tix c88a66c). ANSI/VT cursor addressing is required.
+
 Readiness means the local runtime accepted configuration, not a successful future
 network request. Reload success means published for a future turn, not activated.
 Visible outcome uses public message status, never undocumented numeric CLI state.

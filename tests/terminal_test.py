@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='terminal-',dir=os.getcwd()) as director
     until(b'Turn cancelled.')
     output.clear()
     os.write(master,b'continue\n')
-    until(b'assistant: from cog-cli!')
+    until(b'from cog-cli!')
     time.sleep(.2)
     os.write(master,b'third turn\n')
     until(b'assistant: Hello ')

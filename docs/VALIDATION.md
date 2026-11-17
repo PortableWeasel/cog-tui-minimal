@@ -2,6 +2,13 @@
 
 ## Completed evidence
 
+- Continuous streaming layout: one assistant label per message, output above a
+  separator and a fixed readline input row. A libvterm screen-emulation PTY test
+  checks concatenated response cells, draft/cursor preservation during chunks,
+  resize, wrapped messages, scrolling, long input, settings prompts and cleanup.
+  `libvterm` is an optional test-only dependency; CTest skips this check when it
+  is absent. Normal GCC and Clang ASan/UBSan suites pass all 14 current tests.
+
 - Three header/scenario passes plus independent contract review before implementation.
 - Installed public Cog app embedding probe and readline PTY draft-preservation probe.
 - GCC strict C11/Werror build; standalone compilation of every UI public header.
@@ -47,6 +54,17 @@ nonzero exit; it cannot capture sanitizer diagnostics after the terminal is lost
 
 ## Reproducing the local compatible profile
 
+Rebuilt and installed on 2026-11-17 from Cog commit
+`5ce5820003e32d6ae0d15052f881cca05e00b881`, without changing Cog source.
+Cog's installed CLI is `install/cog/bin/cog-cli`; the installed UI is
+`install/stage-real/bin/cog-tui`. GCC and Clang ASan/UBSan UI suites each passed
+all 13 current tests, including the Pi launcher. The loopback test requires
+socket access outside the restricted sandbox. Installed UI PTY checks passed;
+the Pi launcher also reached REAL readiness using the actual Pi settings and
+exited cleanly without submitting a prompt. Cog's installed CLI passed its
+offline mock smoke check. These installs retain the external audited curl and
+c-ares dependency paths; keep `../cog/build-deps` available.
+
 This workspace's successful construction tests used unchanged Cog source and
 its existing audited curl build. From the UI checkout:
 
@@ -56,6 +74,7 @@ cmake -S "$cog_source" -B build-cog -DCOG_USE_VENDORED_LIBS=OFF \
   -DBUILD_TESTING=OFF -DCOG_ENABLE_WERROR=ON \
   -DCOG_NET_CURL_BUILD_DIR="$cog_source/build-deps/curl" \
   -DCOG_NET_CURL_LIBRARY="$cog_source/build-deps/curl/lib/libcurl.so" \
+  -DCMAKE_INSTALL_RPATH="$cog_source/build-deps/curl/lib" \
   -DCMAKE_INSTALL_PREFIX="$PWD/install/cog"
 cmake --build build-cog --target cog-cli -j4
 cmake --install build-cog

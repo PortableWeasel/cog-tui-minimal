@@ -42,9 +42,66 @@ reported as proof of activation. Errors require explicit fresh input, with no
 automatic resubmission. Tool execution and persistent conversation history are
 disabled in this minimum version.
 
+Use an ANSI/VT-compatible terminal. Assistant chunks join into a continuous
+message above a separator; the readline prompt stays on the bottom row while
+output scrolls. Long input scrolls horizontally. Draft text and its cursor are
+preserved during streaming and terminal resize.
+
+To reuse Pi's OpenRouter key and default model, launch from this checkout:
+
+```sh
+./scripts/cog-tui-pi
+```
+
+The launcher requires Python 3 and reads `~/.pi/agent/settings.json` and
+`auth.json` on every launch. Pi's default provider must be `openrouter`.
+It exports the credential only to the launched process and refreshes private
+settings in `~/.cog-tui-pi`, saving only an environment reference to the key.
+Changes made with `/settings` are replaced by Pi's selection on the next launch.
+Literal API keys and environment variable names in Pi's auth entry are supported;
+command-based credentials (`!command`) are rejected.
+
+It finds `build-real/cog-tui`, `build/cog-tui`, the local staged installs, or
+`cog-tui` on PATH. Set `COG_TUI_BIN=/path/to/cog-tui` to choose another executable.
+`PI_CODING_AGENT_DIR` overrides Pi's agent directory; `COG_TUI_CONFIG_DIR`
+overrides the launcher's settings directory. `--mock` runs the offline fixture
+with the imported selection. `--help` prints launcher usage.
+
 Run `cog-tui --mock` for an explicit offline terminal fixture. Its delayed mock
 chunks exercise editing, cancellation and continuation; they do not call a real
 provider. Mock model names can be changed through `/settings`.
+
+## Update the installed commands
+
+From this checkout, run:
+
+```sh
+./scripts/cog-update
+# Also run the Clang sanitizer suite:
+./scripts/cog-update --sanitizers
+```
+
+After the first run, `cog-update` is available on PATH through `~/.local/bin`,
+alongside `cog-cli`, `cog-tui` and `cog-tui-pi`. Run it from any directory.
+Restart `cog-tui-pi` after updating; running processes keep their existing code.
+
+The script builds the current sibling `../cog` checkout, installs its CLI and
+public libraries to `install/cog`, then builds and tests the TUI before installing
+it to `install/stage-real`. It checks the installed commands and creates missing
+PATH symlinks, refusing to replace unrelated files. Cog is installed before TUI
+validation because the TUI consumes its installed public APIs. A later failure
+stops the script; the two installations are not an atomic transaction.
+Pi credentials/settings are untouched. It does not pull git changes or download
+dependencies.
+
+This script uses the local audited Linux curl profile described in
+[validation status](docs/VALIDATION.md). Keep Cog's `build-deps` directory
+available. Build output and logs stay in `build-cog`, `build-real`, and optionally
+`build-final-asan`. Tests need a terminal-capable environment and permission to
+open a local loopback socket. `libvterm` enables the optional screen-emulation
+test. Set `COG_SOURCE_DIR`, `COG_CURL_BUILD_DIR`, `COG_CURL_INCLUDE_DIR`,
+`COG_UPDATE_JOBS`, or `COG_BIN_DIR` to override the defaults; see
+`./scripts/cog-update --help`.
 
 ## Verification and design
 
@@ -65,3 +122,8 @@ See [validation status](docs/VALIDATION.md), [goals](docs/GOALS.md),
 Development follows `software-blueprint` and `cog-dev`, with tix tracking the
 remaining validation and integration work. Live provider acceptance is separate
 from offline/mock and construction tests.
+
+The [streaming Markdown blueprint](docs/markdown/BLUEPRINT.md) plans reversible
+partial-syntax previews and a backend-neutral renderer suitable for ncursesw.
+It includes draft headers, scenario traces, an architecture diagram and staged
+implementation gates. This is planned work; the installed renderer is plain text.
