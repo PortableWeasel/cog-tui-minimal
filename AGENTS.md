@@ -13,8 +13,9 @@ An independent, lightweight C11 terminal UI for Cog.
 ## Workflow
 
 - Follow the `software-blueprint` and `cog-dev` skills, as used for Cog.
-- Stay in the current blueprint stage until its decisions are agreed with the
-  user. Current goals and open decisions are in `docs/GOALS.md`.
+- The user authorized autonomous progression through all remaining blueprint
+  stages using best judgment. Track decisions, gates, and blockers in tix; do
+  not pause for routine stage approval. Goals are in `docs/GOALS.md`.
 - Track decisions and tasks with tix in this repository.
 - Design headers/contracts before implementation; complete at least three
   header/scenario/review passes before implementation.

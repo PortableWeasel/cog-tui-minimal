@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="920" viewBox="0 0 1060 920">
+<defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto-start-reverse"><path d="M0 0L10 4L0 8" fill="#334155"/></marker></defs>
+<rect width="1060" height="920" fill="#fff"/>
+<g font-family="sans-serif" fill="#14253b"><text x="30" y="35" font-size="25">cog-tui: minimum UI responsibility map</text><text x="30" y="65" font-size="15">Stage 4 — proposed contracts; integration feasibility under research</text>
+<rect x="20" y="85" width="1020" height="440" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="8 5"/><text x="35" y="108" font-size="14">UI application boundary (C11); dependency/module split remains provisional</text>
+<rect x="40" y="120" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="52" y="152" font-size="20">Input</text>
+<text x="52" y="184" font-size="13">draft prompt / user intent</text>
+<rect x="370" y="120" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="382" y="152" font-size="20">Lifecycle coordinator</text>
+<text x="382" y="184" font-size="13">readiness / resource ownership</text>
+<rect x="700" y="120" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="712" y="152" font-size="20">Settings</text>
+<text x="712" y="184" font-size="13">saved selection / credential reference</text>
+<rect x="40" y="350" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="52" y="382" font-size="20">Terminal renderer</text>
+<text x="52" y="414" font-size="13">screen / status / redraw</text>
+<rect x="370" y="350" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="382" y="382" font-size="20">Conversation state</text>
+<text x="382" y="414" font-size="13">visible turns / active aggregate</text>
+<rect x="700" y="350" width="300" height="110" rx="8" fill="#fef3c7" stroke="#b45309"/>
+<text x="712" y="382" font-size="20">Cog integration</text>
+<text x="712" y="414" font-size="13">request / event / active configuration</text>
+<path d="M340 165H370" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M670 165H700" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M520 230V350" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M190 350V230" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M370 405H340" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M850 230V350" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<path d="M700 405H670" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#a)"/>
+<text x="45" y="495" font-size="14">Readline selected • ncurses candidate • settings storage local to UI • tool execution stays in Cog</text>
+<path d="M850 460V565" stroke="#334155" stroke-width="2" marker-end="url(#a)"/><text x="540" y="550" font-size="14">Published UI APIs only; transport/hosting to verify</text>
+<rect x="20" y="565" width="1020" height="100" rx="10" fill="#f3e8ff" stroke="#7e22ce" stroke-dasharray="8 5"/><text x="40" y="600" font-size="20">Cog runtime boundary — unchanged external dependency</text><text x="40" y="630" font-size="15">Provider requests • agent loop • session state • system prompts • conditional tool execution</text>
+<text x="30" y="710" font-size="20">Contract inventory (planned; no header API selected yet)</text>
+<text x="30" y="745" font-size="15">UI application: input, lifecycle, settings, presentation, rendering — headers/types in Stage 6</text>
+<text x="30" y="777" font-size="15">Cog adapter: existing published Cog UI contracts — verify in Stage 5 before declaring wrapper</text>
+<text x="30" y="809" font-size="15">Readline: prompt editor dependency; renderer choice requires event/redraw proof</text>
+<text x="30" y="841" font-size="15">Yellow: design in progress • Blue: UI boundary • Purple: external runtime boundary</text>
+</g></svg>
