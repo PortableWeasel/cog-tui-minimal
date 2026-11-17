@@ -2,10 +2,11 @@
 
 The first working terminal UI for Cog, developed in an independent repository.
 
-Status: software-blueprint Stage 2 — functional blocks (proposed for discussion).
+Status: software-blueprint Stage 3 — goals cross-check (ready for review).
 
 See [the agreed goals](docs/GOALS.md) and
-[functional blocks](docs/FUNCTIONAL_BLOCKS.md). Use C11 and the same header-first,
+[functional blocks](docs/FUNCTIONAL_BLOCKS.md), with the
+[goals cross-check](docs/GOALS_CROSS_CHECK.md). Use C11 and the same header-first,
 ticket-driven C workflow as Cog, with CMake and CTest. Use readline for prompt
 editing; ncurses is an acceptable candidate for terminal rendering, pending
 research. Keep dependencies and scope small.

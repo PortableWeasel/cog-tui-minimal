@@ -1,6 +1,6 @@
 # Stage 1 — Goals
 
-Status: Stage 1 agreed; continuing with Stage 2 functional blocks. The target
+Status: Stage 1 agreed; Stage 3 cross-check complete for review. The target
 is a minimum viable UI for real work:
 run `cog-tui`, configure once, then return directly to a usable prompt.
 

@@ -1,7 +1,7 @@
 # Stage 2 — Functional blocks
 
-Status: proposed for discussion, based on the [agreed goals](GOALS.md).
-These are categories of responsibility, not a commitment to seven libraries,
+Status: Stage 2 baseline; refined by the [Stage 3 cross-check](GOALS_CROSS_CHECK.md).
+These are categories of responsibility, not a commitment to six libraries,
 processes, or source modules. Keep one lightweight UI application; resolve its
 internal module boundaries and public contracts in later stages.
 
@@ -16,6 +16,10 @@ Track resource ownership and restore the terminal on exit. Runtime launch versus
 attachment is a later integration decision; launching `cog-tui` must provide the
 agreed simple startup experience. Any runtime shutdown must respect whether the
 UI owns that runtime.
+
+On connection loss, stop admitting submissions and show the current turn as
+unresolved unless Cog has supplied a definitive outcome. Do not automatically
+resubmit a prompt whose acceptance or completion is unknown.
 
 ## 2. User input and interaction
 
@@ -40,6 +44,10 @@ from other local users, and omit credentials from ordinary display and
 diagnostics. Distinguish saved preferences from the configuration actually
 active in Cog. File format, credential mechanism, validation depth, and timing
 of configuration changes remain research/contract decisions.
+
+If saving an edit fails, retain the previous saved configuration and keep the
+edit available for correction or retry. Report save failure separately from
+failure to activate a successfully saved selection in Cog.
 
 ## 4. Cog integration boundary
 
@@ -80,6 +88,10 @@ writing components corrupt the prompt. Ncurses is an acceptable candidate,
 pending validation of its interaction with readline. Rendering layout, Markdown
 support, and full-screen behavior are not selected at this stage.
 
+Show the active provider/model reported or established through Cog integration;
+label a newly saved selection as pending until activation is confirmed. Present
+connection loss or an unknown turn outcome without implying successful completion.
+
 ## Responsibility flow
 
 On launch, lifecycle coordination loads settings. Missing settings route through
@@ -117,5 +129,6 @@ and real Cog integration checks. They are not runtime subsystems.
 - Include tool activity rendering only if existing APIs and system prompts
   support a reliable tool round trip. No separate tool subsystem is needed here.
 
-Stage 3 will cross-check these blocks against every agreed goal and prune or
-amend responsibilities before the system diagram and research stages.
+The Stage 3 cross-check maps every agreed goal to these responsibilities and
+records the remaining feasibility questions before the diagram and research
+stages.
