@@ -2,6 +2,8 @@
  * @brief Owner-thread adapter to installed public Cog app and core APIs.
  * No calls are signal-safe. Settings are copied on construction/reload.
  * Snapshot borrows end at the next mutating runtime call. No private Cog API.
+ * Noninteractive Cog drives stop after each turn; adapter ends/restarts drivers
+ * while retaining the same app/session. Idle step calls do not run an empty core.
  */
 #ifndef COG_TUI_RUNTIME_H
 #define COG_TUI_RUNTIME_H
