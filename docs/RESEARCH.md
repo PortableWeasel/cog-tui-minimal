@@ -56,3 +56,11 @@ readline redraw/input while streaming, multiple turns/cancellation/shutdown,
 configuration save failure, reload activation, and REAL construction without
 making a paid/live request. Actual live provider acceptance is separate from
 mock and local validation and will be reported honestly.
+
+### Readline proof
+
+`pocs/readline/probe.c` passed a PTY check with a partially edited prompt,
+simulated output, and continued typing. Readline 8.2 preserved `draft text`.
+The callback has no user-context parameter; one explicit callback binding is
+allowed solely in the terminal adapter, with single-instance admission and
+clearing on removal. Substantive application state remains caller-owned.
