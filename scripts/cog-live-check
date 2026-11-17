@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Explicit opt-in, at most two paid requests; retain sanitized partial evidence."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--allow-paid', action='store_true', help='authorize up to two provider requests')
+parser.add_argument('--build-dir', default='build-real')
+parser.add_argument('--report', default='build/live-acceptance/authoritative.json')
+args = parser.parse_args()
+if not args.allow_paid:
+    parser.error('--allow-paid is required; no request was made')
+root = Path(__file__).resolve().parent.parent
+binary = (root / args.build_dir / 'live-acceptance').resolve()
+if not binary.is_file():
+    parser.error('build the live-acceptance target first; no request was made')
+report = (root / args.report).resolve()
+report.parent.mkdir(parents=True, exist_ok=True)
+result = {'requests': 0, 'events': [], 'returncode': None, 'timed_out': False}
+with tempfile.TemporaryDirectory(prefix='private-', dir=report.parent) as private:
+    env = dict(os.environ, COG_TUI_LIVE_ACCEPT='1', COG_TUI_BIN=str(binary),
+               COG_TUI_CONFIG_DIR=private)
+    try:
+        run = subprocess.run([str(root / 'scripts/cog-tui-pi')], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             timeout=270, check=False)
+        output = run.stdout
+        result['returncode'] = run.returncode
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or b''
+        result['timed_out'] = True
+    # Only the test program's numeric/boolean whitelist can enter the report.
+    keys = {'request', 'requests', 'bytes', 'prefix_changes', 'first_ms',
+            'elapsed_ms', 'committed', 'complete', 'marker', 'ack', 'error',
+            'authoritative_marker', 'cleanup_complete'}
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+            if not isinstance(event, dict) or event.get('kind') not in ('request_start', 'turn', 'summary'):
+                continue
+            clean = {'kind': event['kind']}
+            clean.update({k: v for k, v in event.items()
+                          if k in keys and isinstance(v, (int, bool))})
+            result['events'].append(clean)
+            result['requests'] = max(result['requests'], clean.get('request', 0),
+                                     clean.get('requests', 0))
+        except (ValueError, TypeError):
+            continue
+report.write_text(json.dumps(result, indent=2) + '\n')
+print(json.dumps(result))
+raise SystemExit(0 if result['returncode'] == 0 and not result['timed_out'] else 1)

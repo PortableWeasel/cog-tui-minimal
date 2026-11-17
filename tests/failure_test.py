@@ -1,5 +1,7 @@
 """No external provider traffic; REAL submission only to a local rejecting TLS peer."""
 import os
+import fcntl
+import struct
 import pty
 import select
 import signal
@@ -17,8 +19,9 @@ scenario = sys.argv[2]
 class Terminal:
     def __init__(self, directory, real=False):
         self.master, self.slave = pty.openpty()
+        fcntl.ioctl(self.slave,termios.TIOCSWINSZ,struct.pack("HHHH",24,120,0,0))
         self.initial = termios.tcgetattr(self.slave)
-        environment = os.environ.copy()
+        environment = dict(os.environ,TERM="xterm")
         environment.pop('COG_TUI_TEST_MISSING_REFERENCE', None)
         environment['COG_TUI_TEST_PRESENT_REFERENCE'] = 'fabricated-offline-test-key'
         args = [binary, '--config-dir', directory]
@@ -119,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='failure-', dir=os.getcwd()) as director
                 terminal.finish()
             elif scenario in ('sigterm-active', 'sigint-active'):
                 terminal.send(b'hello\n')
-                terminal.until(b'assistant: Hello ')
+                terminal.until(b'Hello ')
                 terminal.process.send_signal(signal.SIGTERM if scenario == 'sigterm-active' else signal.SIGINT)
                 if scenario == 'sigint-active':
                     terminal.until(b'Turn cancelled.')

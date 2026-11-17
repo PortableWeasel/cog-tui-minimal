@@ -24,7 +24,9 @@ extern "C" {
  * editing and preserve draft/cursor across redraw. No implicit prompt replay.
  * ANSI/VT-compatible terminal required. Output scrolls above a separator and
  * a single-row, horizontally scrolling readline prompt. Each assistant message
- * has one label; streaming deltas concatenate without inserted whitespace.
+ * has one role label and a Markdown frame from its exact current prefix.
+ * Ctrl-P/Ctrl-N page the viewport; Ctrl-T resumes live tail without draft edits.
+ * Readline auxiliary output is suppressed; the screen is the sole painter.
  * Resize repaints the public snapshot, preserving the input draft and cursor.
  * Restore the full terminal scrolling region before returning.
  */

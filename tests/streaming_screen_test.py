@@ -54,9 +54,11 @@ with tempfile.TemporaryDirectory(prefix="screen-", dir=os.getcwd()) as directory
     master, slave = pty.openpty()
     original = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+    inputrc = Path(directory, "inputrc")
+    inputrc.write_text("set enable-bracketed-paste off\n")
     process = subprocess.Popen([binary, "--mock", "--config-dir", directory],
                                stdin=slave, stdout=slave, stderr=slave,
-                               env=dict(os.environ, TERM="xterm"))
+                               env=dict(os.environ, TERM="xterm", INPUTRC=str(inputrc)))
     captured = bytearray()
 
     def lines():
@@ -95,10 +97,17 @@ with tempfile.TemporaryDirectory(prefix="screen-", dir=os.getcwd()) as directory
 
     try:
         until(lambda s: any("MOCK ready" in line for line in s))
+        assert b"\x1b[?2004h" in captured, "screen must enable bracketed paste"
+        # Pasted Enter is draft data, never an implicit submission.
+        os.write(master, b"\x1b[200~paste-one\npaste-two\x1b[201~")
+        settle()
+        assert any("paste-one" in line for line in lines()[-1:]), lines()
+        assert all("you:" not in line for line in lines()[:-2]), lines()
+        os.write(master, b"\x15")
         os.write(master, b"hello\n")
-        until(lambda s: any("assistant: Hello " in line + " " for line in s))
+        until(lambda s: any("Hello " in line + " " for line in s))
         os.write(master, b"draft\x1b[D\x1b[D")
-        until(lambda s: "assistant: Hello from cog-cli!" in s)
+        until(lambda s: "Hello from cog-cli!" in s)
         settle()
         separated()
         assert sum(line.count("assistant:") for line in lines()) == 1, lines()
@@ -112,14 +121,27 @@ with tempfile.TemporaryDirectory(prefix="screen-", dir=os.getcwd()) as directory
         until(lambda s: s[-2] == "--- input ---" and s[-1] == "cog> draXft")
         separated()
         os.write(master, b"Y\x05\n")
-        until(lambda s: any("you: draXYft" in line for line in s))
+        until(lambda s: any("draXYft" in line for line in s))
         settle(.4)
         # Repeated wrapped messages force output scrolling; the prompt stays put.
         for number in range(4):
             os.write(master, f"turn-{number} with a long wrapping input\n".encode())
             settle(.45)
             separated()
-            assert "assistant: Hello from cog-cli!" in "".join(lines()[:-2]), lines()
+            assert "Hello from cog-cli!" in "".join(lines()[:-2]), lines()
+        # Paging changes only the viewport, preserving the editable draft.
+        os.write(master, b"saved-draft\x10")
+        until(lambda s: "Scroll paused" in s[-2] and s[-1] == "cog> saved-draft")
+        os.write(master, b"\x0e")
+        settle()
+        assert lines()[-1] == "cog> saved-draft", lines()
+        os.write(master, b"\x14")
+        until(lambda s: s[-2] == "--- input ---" and s[-1] == "cog> saved-draft")
+        os.write(master, b"\x0c")  # hidden readline clear output goes to sink
+        settle()
+        separated()
+        assert lines()[-1] == "cog> saved-draft", lines()
+        os.write(master, b"\x15")
         # A draft wider than the screen must stay on its one input row.
         os.write(master, b"z" * 100)
         settle()
@@ -134,6 +156,7 @@ with tempfile.TemporaryDirectory(prefix="screen-", dir=os.getcwd()) as directory
         assert termios.tcgetattr(slave) == original
         while select.select([master], [], [], .02)[0]:
             pump(0)
+        assert b"\x1b[?2004r" in captured[-150:], "bracketed paste mode was not restored"
         assert b"\x1b[r" in captured[-100:], "scrolling region was not restored"
         print("Continuous streaming, draft/cursor, resize, scrolling and cleanup: PASS")
     finally:

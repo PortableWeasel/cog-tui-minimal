@@ -1,17 +1,21 @@
 #define _POSIX_C_SOURCE 200809L
 #include <cog_tui/app.h>
 #include <cog_tui/runtime.h>
+#include <cog_tui/transcript.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <locale.h>
 #include <poll.h>
+#include <readline/keymaps.h>
 #include <readline/readline.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef struct app {
@@ -23,15 +27,20 @@ typedef struct app {
   char *line;
   bool eof, quitting, busy, editing;
   unsigned field;
-  size_t rendered[4096];
-  bool finished[4096];
-  uint64_t identities[4096];
+  cog_tui_markdown_t *markdown;
+  cog_tui_screen_t *screen;
+  cog_tui_transcript_t *transcript;
+  cog_tui_screen_size_t size;
+  cog_result_t display_error;
+  bool dirty, immediate;
+  uint64_t last_paint, last_terminal;
+  char notices[8][512];
+  size_t notice_count;
   char runtime_model[COG_TUI_VALUE_CAPACITY],
       published_model[COG_TUI_VALUE_CAPACITY];
   bool pending_selection;
   uint64_t baseline;
-  unsigned rows, columns;
-  bool response_open;
+
 } app_t;
 /* Readline exposes no callback user-data. One bounded lifetime binding only. */
 static app_t *binding;
@@ -45,46 +54,92 @@ static void on_line(char *line) {
   } else
     free(line);
 }
-/* The saved terminal cursor belongs to output; readline owns the bottom row. */
-static void output_begin(app_t *a) {
-  fputs("\0338", a->output);
+static uint64_t milliseconds(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+    return 0;
+  return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
 }
 static void input_redraw(app_t *a) {
-  fprintf(a->output, "\033[%u;1H\033[2K", a->rows);
-  rl_on_new_line();
-  rl_forced_update_display();
-  fflush(a->output);
+  if (!a->screen)
+    return;
+  const char *draft = rl_line_buffer ? rl_line_buffer : "";
+  size_t count = strlen(draft);
+  size_t cursor = rl_point >= 0 ? (size_t)rl_point : 0;
+  if (cursor > count)
+    cursor = count;
+  cog_tui_screen_input_t input = {rl_prompt ? rl_prompt : "cog> ", draft, count,
+                                  cursor};
+  cog_result_t rc = cog_tui_screen_input(a->screen, &input);
+  if (rc != COG_OK)
+    a->display_error = rc;
+  a->dirty = true;
+  a->immediate = true;
 }
-static void output_end(app_t *a) {
-  fputs("\0337", a->output);
-  input_redraw(a);
+static void redisplay(void) {
+  if (binding)
+    input_redraw(binding);
+}
+static int scroll_back(int count, int key) {
+  (void)count;
+  (void)key;
+  if (binding) {
+    (void)cog_tui_transcript_scroll(binding->transcript, -1);
+    binding->dirty = true;
+    binding->immediate = true;
+  }
+  return 0;
+}
+static int scroll_forward(int count, int key) {
+  (void)count;
+  (void)key;
+  if (binding) {
+    (void)cog_tui_transcript_scroll(binding->transcript, 1);
+    binding->dirty = true;
+    binding->immediate = true;
+  }
+  return 0;
+}
+static int scroll_tail(int count, int key) {
+  (void)count;
+  (void)key;
+  if (binding) {
+    (void)cog_tui_transcript_scroll(binding->transcript, 0);
+    binding->dirty = true;
+    binding->immediate = true;
+  }
+  return 0;
 }
 static void layout(app_t *a) {
-  struct winsize size = {0};
-  (void)ioctl(STDIN_FILENO, TIOCGWINSZ, &size);
-  unsigned rows = size.ws_row >= 4 ? size.ws_row : 24u;
-  unsigned columns = size.ws_col >= 10 ? size.ws_col : 80u;
-  if (rows == a->rows && columns == a->columns)
+  cog_tui_screen_size_t size;
+  cog_result_t rc = cog_tui_screen_resize(a->screen, &size);
+  if (rc != COG_OK) {
+    a->display_error = rc;
     return;
-  a->rows = rows;
-  a->columns = columns;
-  rl_resize_terminal();
-  fprintf(a->output, "\033[r\033[2J\033[1;%ur"
-                     "\033[%u;1H\033[2K%.*s\033[1;1H",
-          rows - 2u, rows - 1u, (int)(columns - 1u), "--- input ---");
-  a->response_open = false;
-  memset(a->rendered, 0, sizeof(a->rendered));
-  output_end(a);
+  }
+  if (size.rows != a->size.rows || size.columns != a->size.columns) {
+    a->size = size;
+    rl_resize_terminal();
+    a->dirty = true;
+    a->immediate = true;
+  }
 }
 static void say(app_t *a, const char *text) {
-  output_begin(a);
-  if (a->response_open) {
-    fputs("\n", a->output);
-    a->response_open = false;
+  while (*text) {
+    if (a->notice_count == 8) {
+      memmove(a->notices, a->notices + 1, 7 * sizeof(a->notices[0]));
+      a->notice_count = 7;
+    }
+    size_t n = strlen(text);
+    if (n > 511)
+      n = 511;
+    memcpy(a->notices[a->notice_count], text, n);
+    a->notices[a->notice_count][n] = '\0';
+    ++a->notice_count;
+    text += n;
   }
-  fputs(text, a->output);
-  fputc('\n', a->output);
-  output_end(a);
+  a->dirty = true;
+  a->immediate = true;
 }
 static void error_message(app_t *a, const char *operation, cog_result_t rc) {
   char msg[160];
@@ -93,17 +148,6 @@ static void error_message(app_t *a, const char *operation, cog_result_t rc) {
       "%s failed (Cog error %d). Use /settings to correct configuration.",
       operation, (int)rc);
   say(a, msg);
-}
-static void escaped(FILE *out, const char *text, size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    unsigned char c = (unsigned char)text[i];
-    if (c < 32U && c != '\n' && c != '\t')
-      fprintf(out, "\\x%02x", (unsigned)c);
-    else if (c == 127U)
-      fputs("\\x7f", out);
-    else
-      fputc(c, out);
-  }
 }
 static void prompt(app_t *a) {
   const char *p = "cog> ";
@@ -223,7 +267,8 @@ static void command_show(app_t *a) {
 static void command_help(app_t *a) {
   say(a, "/settings configure provider details and model; /show saved "
          "selection; /cancel active turn; /quit exit. Ctrl-C cancels a turn, "
-         "or exits when idle. Tools are disabled in this version.");
+         "or exits when idle. Ctrl-P/Ctrl-N scroll; Ctrl-T returns live. "
+         "Tools are disabled in this version.");
 }
 static void handle_line(app_t *a, const char *line) {
   if (a->editing) {
@@ -271,68 +316,114 @@ static void handle_line(app_t *a, const char *line) {
   rc = cog_tui_runtime_submit(a->runtime, line, strlen(line));
   if (rc != COG_OK)
     error_message(a, "Submit", rc);
-  else
+  else {
     a->busy = true;
+    a->notice_count = 0;
+    a->dirty = true;
+    a->immediate = true;
+  }
+}
+static cog_result_t paint(app_t *a,
+                          const cog_cli_display_snapshot_t *snapshot) {
+  if (a->display_error != COG_OK)
+    return a->display_error;
+  uint64_t now = milliseconds();
+  if (!a->dirty || (!a->immediate && now - a->last_paint < 34))
+    return COG_OK;
+  if (!a->size.output_rows) {
+    cog_tui_screen_scene_t empty = {0};
+    cog_result_t rc = cog_tui_screen_present(a->screen, &empty);
+    if (rc == COG_ERROR_AGAIN) {
+      a->immediate = true;
+      return COG_OK;
+    }
+    return rc;
+  }
+  cog_tui_screen_slice_t slices[300];
+  cog_tui_md_view_t notices[8];
+  cog_tui_md_frame_t *frames[8] = {0};
+  size_t n = 0, notice_rows = 0, notice_frames = 0;
+  size_t notice_budget = snapshot && snapshot->item_count
+                             ? a->size.output_rows / 2
+                             : a->size.output_rows;
+  cog_result_t rc = COG_OK;
+  for (size_t i = a->notice_count; i > 0 && notice_rows < notice_budget; --i) {
+    cog_tui_md_source_t source = {a->notices[i - 1], strlen(a->notices[i - 1]),
+                                  UINT64_MAX - i, COG_TUI_MD_COMPLETE};
+    cog_tui_md_window_t window = {a->size.output_columns, 0,
+                                  notice_budget - notice_rows};
+    rc = cog_tui_markdown_render(a->markdown, &source, COG_TUI_MD_FORMAT_PLAIN,
+                                 &window, &frames[notice_frames]);
+    if (rc != COG_OK)
+      goto cleanup;
+    (void)cog_tui_md_frame_view(frames[notice_frames], &notices[notice_frames]);
+    notice_rows += notices[notice_frames].row_count;
+    ++notice_frames;
+  }
+  cog_tui_screen_scene_t conversation = {0};
+  if (snapshot && a->size.output_rows > notice_rows) {
+    rc = cog_tui_transcript_compose(a->transcript, snapshot,
+                                    a->size.output_rows - notice_rows,
+                                    a->size.output_columns, &conversation);
+    if (rc != COG_OK)
+      goto cleanup;
+    for (size_t i = 0; i < conversation.slice_count; ++i)
+      slices[n++] = conversation.slices[i];
+  }
+  for (size_t i = notice_frames; i > 0; --i)
+    slices[n++] = (cog_tui_screen_slice_t){&notices[i - 1], NULL};
+  cog_tui_screen_scene_t scene = {slices, n, conversation.status};
+  rc = cog_tui_screen_present(a->screen, &scene);
+  if (rc == COG_ERROR_AGAIN) {
+    a->immediate = true;
+    rc = COG_OK;
+    goto cleanup;
+  }
+  if (rc == COG_OK) {
+    a->dirty = false;
+    a->immediate = false;
+    a->last_paint = now;
+  }
+cleanup:
+  for (size_t i = 0; i < 8; ++i)
+    (void)cog_tui_md_frame_free(&frames[i]);
+  return rc;
 }
 static cog_result_t render(app_t *a) {
+  if (!a->runtime)
+    return paint(a, NULL);
   cog_cli_display_snapshot_t v;
   cog_result_t rc = cog_tui_runtime_snapshot(a->runtime, &v);
   if (rc != COG_OK)
     return rc;
-  if (v.item_count > 4096)
-    return COG_ERROR_LIMIT;
-  for (size_t i = 0; i < v.item_count; i++) {
+  bool changed = false;
+  rc = cog_tui_transcript_sync(a->transcript, &v, &changed);
+  if (rc != COG_OK)
+    return rc;
+  a->dirty |= changed;
+  for (size_t i = 0; i < v.item_count; ++i) {
     const cog_cli_display_item_t *item = &v.items[i];
-    if (item->role != COG_MESSAGE_ROLE_ASSISTANT &&
-        item->role != COG_MESSAGE_ROLE_USER)
+    if (item->role != COG_MESSAGE_ROLE_ASSISTANT || !item->node_id ||
+        item->node_id <= a->last_terminal)
       continue;
-    if (a->identities[i] != item->node_id && a->identities[i] != 0) {
-      a->rendered[i] = 0;
-      a->finished[i] = false;
-    }
-    a->identities[i] = item->node_id;
-    bool wrote = item->text_len > a->rendered[i];
-    if (wrote) {
-      output_begin(a);
-      if (!a->rendered[i])
-        fputs(item->role == COG_MESSAGE_ROLE_ASSISTANT ? "assistant: " : "you: ",
-              a->output);
-      escaped(a->output, item->text + a->rendered[i],
-              item->text_len - a->rendered[i]);
-      a->response_open = true;
-      output_end(a);
-      a->rendered[i] = item->text_len;
-    }
-    if (item->node_id && (wrote || !a->finished[i])) {
-      output_begin(a);
-      if (a->response_open)
-        fputs("\n\n", a->output);
-      a->response_open = false;
-      output_end(a);
-    }
-    if (item->role != COG_MESSAGE_ROLE_ASSISTANT) {
-      a->finished[i] = item->node_id != 0;
-      continue;
-    }
-    if (item->node_id && !a->finished[i]) {
-      a->finished[i] = true;
-      if (item->node_id > a->baseline) {
-        a->busy = false;
-        if (a->pending_selection) {
-          strcpy(a->runtime_model, a->published_model);
-          a->pending_selection = false;
-        }
+    a->last_terminal = item->node_id;
+    a->immediate = true;
+    if (item->node_id > a->baseline) {
+      a->busy = false;
+      if (a->pending_selection) {
+        strcpy(a->runtime_model, a->published_model);
+        a->pending_selection = false;
       }
-      if (item->status == COG_MESSAGE_CANCELLED)
-        say(a, "Turn cancelled.");
-      else if (item->status != COG_MESSAGE_COMPLETE)
-        say(a, a->quitting ? "Turn incomplete or failed. Runtime stopped; "
-                             "restart to continue. No automatic replay."
-                           : "Turn incomplete or failed. Submit fresh input to "
-                             "continue; no automatic replay.");
     }
+    if (item->status == COG_MESSAGE_CANCELLED)
+      say(a, "Turn cancelled.");
+    else if (item->status != COG_MESSAGE_COMPLETE)
+      say(a, a->quitting ? "Turn incomplete or failed. Runtime stopped; "
+                           "restart to continue. No automatic replay."
+                         : "Turn incomplete or failed. Submit fresh input to "
+                           "continue; no automatic replay.");
   }
-  return COG_OK;
+  return paint(a, &v);
 }
 static int private_directory(const char *path) {
   struct stat st;
@@ -460,7 +551,36 @@ int cog_tui_app_run(int argc, char **argv) {
     return 2;
   }
   close(sink);
-  rl_outstream = a.output;
+  FILE *readline_sink = fopen("/dev/null", "w");
+  (void)setlocale(LC_CTYPE, "");
+  if (MB_CUR_MAX == 1)
+    (void)setlocale(LC_CTYPE, "C.UTF-8");
+  cog_result_t init =
+      readline_sink ? cog_tui_markdown_new(&a.markdown, NULL) : COG_ERROR_IO;
+  if (init == COG_OK)
+    init = cog_tui_transcript_new(&a.transcript, a.markdown);
+  if (init == COG_OK)
+    init = cog_tui_screen_open(&a.screen, COG_TUI_SCREEN_ANSI, stdin, a.output);
+  if (init != COG_OK) {
+    (void)cog_tui_transcript_free(&a.transcript);
+    (void)cog_tui_markdown_free(&a.markdown);
+    if (readline_sink)
+      fclose(readline_sink);
+    (void)dup2(saved_out, STDOUT_FILENO);
+    (void)dup2(saved_err, STDERR_FILENO);
+    (void)sigaction(SIGINT, &old_int, NULL);
+    (void)sigaction(SIGTERM, &old_term, NULL);
+    close(saved_err);
+    fclose(a.output);
+    return 2;
+  }
+  rl_voidfunc_t *old_redisplay = rl_redisplay_function;
+  rl_redisplay_function = redisplay;
+  const char *bell = rl_variable_value("bell-style");
+  char old_bell[32];
+  (void)snprintf(old_bell, sizeof(old_bell), "%s", bell ? bell : "audible");
+  (void)rl_variable_bind("bell-style", "none");
+  rl_outstream = readline_sink;
   rl_instream = stdin;
   int old_catch = rl_catch_signals;
   rl_catch_signals = 0;
@@ -469,6 +589,16 @@ int cog_tui_app_run(int argc, char **argv) {
   (void)rl_variable_bind("horizontal-scroll-mode", "on");
   binding = &a;
   rl_callback_handler_install("cog> ", on_line);
+  const char *paste = rl_variable_value("enable-bracketed-paste");
+  bool old_paste = paste && !strcmp(paste, "on");
+  (void)rl_variable_bind("enable-bracketed-paste", "on");
+  Keymap old_map = rl_get_keymap();
+  KEYMAP_ENTRY old_back = old_map[16], old_forward = old_map[14],
+               old_tail = old_map[20];
+  old_map[16] = (KEYMAP_ENTRY){ISFUNC, scroll_back};
+  old_map[14] = (KEYMAP_ENTRY){ISFUNC, scroll_forward};
+  old_map[20] = (KEYMAP_ENTRY){ISFUNC, scroll_tail};
+  input_redraw(&a);
   layout(&a);
   command_help(&a);
   if (loaded == COG_OK || mock)
@@ -511,6 +641,7 @@ int cog_tui_app_run(int argc, char **argv) {
       cog_result_t rc = cog_tui_runtime_step(a.runtime, &status);
       wait = status.wait_ms;
       if (rc != COG_OK) {
+        (void)cog_tui_transcript_fail(a.transcript);
         error_message(&a, "Runtime", rc);
         result = 1;
         a.quitting = true;
@@ -526,16 +657,24 @@ int cog_tui_app_run(int argc, char **argv) {
           result = 1;
         done = true;
       }
-    } else if (a.quitting)
-      done = true;
+    } else {
+      if (render(&a) != COG_OK) {
+        a.quitting = true;
+        result = 1;
+      }
+      if (a.quitting)
+        done = true;
+    }
     if (done)
       break;
     struct pollfd input = {.fd = STDIN_FILENO, .events = POLLIN};
     int timeout = wait > 20 ? 20 : (int)wait;
     int ready = poll(&input, 1, timeout);
     if (ready > 0) {
-      if (input.revents & POLLIN)
+      if (input.revents & POLLIN) {
         rl_callback_read_char();
+        input_redraw(&a);
+      }
       if (input.revents & (POLLHUP | POLLERR))
         a.quitting = true;
     } else if (ready < 0 && errno != EINTR) {
@@ -545,8 +684,19 @@ int cog_tui_app_run(int argc, char **argv) {
   }
   free(a.line);
   rl_callback_handler_remove();
-  fprintf(a.output, "\033[r\033[%u;1H\033[2K\r\n", a.rows);
-  (void)rl_variable_bind("horizontal-scroll-mode", old_horizontal ? "on" : "off");
+  (void)rl_variable_bind("enable-bracketed-paste", old_paste ? "on" : "off");
+  old_map[16] = old_back;
+  old_map[14] = old_forward;
+  old_map[20] = old_tail;
+  rl_redisplay_function = old_redisplay;
+  (void)rl_variable_bind("bell-style", old_bell);
+  if (cog_tui_screen_close(&a.screen) != COG_OK)
+    result = 1;
+  (void)cog_tui_transcript_free(&a.transcript);
+  (void)cog_tui_markdown_free(&a.markdown);
+  fclose(readline_sink);
+  (void)rl_variable_bind("horizontal-scroll-mode",
+                         old_horizontal ? "on" : "off");
   binding = NULL;
   rl_catch_signals = old_catch;
   rl_outstream = old_out;
