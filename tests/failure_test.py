@@ -1,4 +1,4 @@
-"""Offline terminal failure and cleanup scenarios; never submit a REAL prompt."""
+"""No external provider traffic; REAL submission only to a local rejecting TLS peer."""
 import os
 import pty
 import select
