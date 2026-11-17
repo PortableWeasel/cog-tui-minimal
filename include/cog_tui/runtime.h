@@ -33,6 +33,10 @@ typedef struct cog_tui_runtime_status {
  * @note REAL initializes and owns curl runtime then net, then app; reverse
  * cleanup. Only one real runtime may own dependency lifecycle in this process.
  * Persistence and tools disabled. Explicit fields override ambient Cog defaults.
+ * Before manual driving, run the app once with interactive=false and no prompt
+ * or queued input; this empty run must return OK without creating a turn. This
+ * satisfies the public app_free lifecycle precondition. Reject incompatible
+ * installations where this empty-run behavior is not supported.
  * Cog may write stdout/stderr: application owns output routing before new().
  */
 cog_result_t cog_tui_runtime_new(cog_tui_runtime_t **out,

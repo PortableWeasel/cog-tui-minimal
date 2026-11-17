@@ -29,6 +29,15 @@ explicitly to avoid silently consuming unrelated Cog configuration.
    implementation. Scenario gaps now have named owners; behavioral evidence is
    still required by the tests below.
 
+## Lifecycle review amendment
+
+Independent review required satisfying the public app_free precondition that
+app_run has returned. The constructor now performs one empty app_run with
+interactive=false and no prompt/queue before beginning manual driving. The
+installed-package probe returned without creating a turn; independent critic
+approved this route. This is part of compatibility validation, not a private
+state assumption.
+
 ## Implementation and verification sequence
 
 - Implement settings with contract tests: defaults/incomplete validation, complete
