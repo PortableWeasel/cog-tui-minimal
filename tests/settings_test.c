@@ -73,6 +73,21 @@ int main(int argc,char **argv)
     CHECK(fclose(f)==0);CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_LIMIT);
     CHECK(cog_tui_settings_save(path,&s)==COG_OK);
     CHECK(cog_tui_settings_load(path,&loaded)==COG_OK && !strcmp(loaded.credential_ref,"env:KEY_2"));
-    CHECK(unlink(linkpath)==0);CHECK(unlink(path)==0);CHECK(rmdir(dir)==0);
+    CHECK(unlink(linkpath)==0);
+    CHECK(symlink(dir,linkpath)==0);
+    char through_link[8192];
+    CHECK(snprintf(through_link,sizeof(through_link),"%s/config",linkpath)>0);
+    CHECK(cog_tui_settings_save(through_link,&s)==COG_ERROR_DENIED);
+    CHECK(unlink(linkpath)==0);
+    f=fopen(path,"w");CHECK(f!=NULL);
+    const char nul_data[]={ 'v','e','r','s','i','o','n','=','1',0,'x' };
+    CHECK(fwrite(nul_data,1,sizeof(nul_data),f)==sizeof(nul_data));
+    CHECK(fclose(f)==0);CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_PROTOCOL);
+    CHECK(cog_tui_settings_load(NULL,&loaded)==COG_ERROR_NULL_PTR);
+    CHECK(cog_tui_settings_load(path,NULL)==COG_ERROR_NULL_PTR);
+    CHECK(cog_tui_settings_save(NULL,&s)==COG_ERROR_NULL_PTR);
+    CHECK(cog_tui_settings_save(path,NULL)==COG_ERROR_NULL_PTR);
+    CHECK(cog_tui_settings_validate(NULL)==COG_ERROR_NULL_PTR);
+    CHECK(unlink(path)==0);CHECK(rmdir(dir)==0);
     puts("settings contracts passed");return 0;
 }
