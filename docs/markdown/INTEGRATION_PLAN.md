@@ -126,8 +126,9 @@ within bounds; never silently discard the only actionable setup error.
 
 ## Pass 3 — input, teardown, and executable gates
 
-The M2 screen PoC determines the exact readline hook ownership before app
-implementation. The redisplay bridge stages a copied prompt/draft/byte cursor
+M2 ownership clarification: the app installs/restores readline hooks and routes
+auxiliary readline writes to an owned nonterminal sink; the screen module owns
+only physical painting and its own terminal state. The redisplay bridge stages a copied prompt/draft/byte cursor
 and marks the screen dirty; it never paints recursively. Hidden readline writes
 (accept, completion, search, bell, clear, prep/deprep) must be intercepted,
 suppressed through an owned nonterminal stream, or explicitly unsupported with
@@ -170,7 +171,8 @@ patch Cog to manufacture those cases.
 ## Separate live-provider acceptance
 
 Ticket `7901f1a` is independent of Markdown correctness. Its earlier condition
-was explicit opt-in for live requests; this plan sends none. Once opted in, use
+was explicit opt-in for live requests; the user has now supplied that opt-in.
+No live result is claimed by this planning document. For the acceptance run, use
 the existing Pi launcher with a temporary private `COG_TUI_CONFIG_DIR` and the
 new binary through `COG_TUI_BIN`, so credentials stay in the child environment
 and saved user configuration is untouched. Never print environment variables,
