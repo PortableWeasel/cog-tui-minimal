@@ -132,8 +132,8 @@ cog_result_t cog_tui_settings_save(const char *path, const cog_tui_settings_t *s
         if (fd >= 0 || errno != EEXIST) break;
     }
     if (fd < 0) { close(dir); return COG_ERROR_IO; }
-    r = COG_OK; size_t sent = 0;
-    while (sent < (size_t)count) {
+    r = fchmod(fd, 0600) == 0 ? COG_OK : COG_ERROR_IO; size_t sent = 0;
+    while (r == COG_OK && sent < (size_t)count) {
         ssize_t n = write(fd, bytes + sent, (size_t)count - sent);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { r = COG_ERROR_IO; break; }

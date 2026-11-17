@@ -27,7 +27,9 @@ int main(int argc,char **argv)
     CHECK(cog_tui_settings_validate(&s)==COG_ERROR_INVALID_ARG);
     strcpy(s.model,"fixture/model");
     CHECK(cog_tui_settings_validate(&s)==COG_OK);
+    mode_t oldmask=umask(0777);
     CHECK(cog_tui_settings_save(path,&s)==COG_OK);
+    (void)umask(oldmask);
     struct stat st;CHECK(stat(path,&st)==0 && (st.st_mode & 0777)==0600);
     CHECK(cog_tui_settings_load(path,&loaded)==COG_OK && !memcmp(&s,&loaded,sizeof(s)));
     before=loaded;
