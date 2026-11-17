@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <cog_tui/settings.h>
 #include <errno.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +19,54 @@ static int clean(const char *s, size_t cap)
 }
 static int name_start(unsigned char c)
 { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+
+static int valid_authority(const char *url)
+{
+    const char *host = url + 8;
+    const char *end = strchr(host, '/');
+    if (!end) end = host + strlen(host);
+    const char *port = NULL;
+    if (*host == '[') {
+        const char *close = memchr(host, ']', (size_t)(end - host));
+        if (!close || close == host + 1) return 0;
+        char address[INET6_ADDRSTRLEN];
+        size_t length = (size_t)(close - host - 1);
+        if (length >= sizeof(address)) return 0;
+        memcpy(address, host + 1, length); address[length] = 0;
+        struct in6_addr parsed;
+        if (inet_pton(AF_INET6, address, &parsed) != 1) return 0;
+        if (close + 1 < end) {
+            if (close[1] != ':') return 0;
+            port = close + 2;
+        }
+    } else {
+        const char *colon = memchr(host, ':', (size_t)(end - host));
+        const char *host_end = colon ? colon : end;
+        if (colon) port = colon + 1;
+        if (host_end == host || (size_t)(host_end - host) > 253) return 0;
+        const char *label = host;
+        for (const char *p = host; p < host_end; ++p) {
+            unsigned char c = (unsigned char)*p;
+            if (c == '.') {
+                if (p == label || p[-1] == '-' || (size_t)(p - label) > 63) return 0;
+                label = p + 1;
+            } else if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                         (c >= '0' && c <= '9') || (c == '-' && p != label))) return 0;
+        }
+        if (host_end[-1] == '-' || (size_t)(host_end - label) > 63) return 0;
+    }
+    if (port) {
+        if (port == end) return 0;
+        unsigned value = 0;
+        for (const char *p = port; p < end; ++p) {
+            if (*p < '0' || *p > '9') return 0;
+            value = value * 10u + (unsigned)(*p - '0');
+            if (value > 65535u) return 0;
+        }
+        if (!value) return 0;
+    }
+    return 1;
+}
 
 cog_result_t cog_tui_settings_defaults(cog_tui_settings_t *s)
 {
@@ -37,6 +86,7 @@ cog_result_t cog_tui_settings_validate(const cog_tui_settings_t *s)
     if (strcmp(s->provider, "openrouter")) return COG_ERROR_UNSUPPORTED;
     if (strncmp(s->base_url, "https://", 8) || !s->base_url[8] || s->base_url[8] == '/' ||
         strpbrk(s->base_url, "@?# \\")) return COG_ERROR_INVALID_ARG;
+    if (!valid_authority(s->base_url)) return COG_ERROR_INVALID_ARG;
     if (strncmp(s->credential_ref, "env:", 4) || !name_start((unsigned char)s->credential_ref[4]))
         return COG_ERROR_INVALID_ARG;
     for (size_t i = 5; s->credential_ref[i]; ++i) {

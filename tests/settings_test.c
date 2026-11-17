@@ -56,10 +56,14 @@ int main(int argc,char **argv)
         strcpy(s.credential_ref,refs[i]);CHECK(cog_tui_settings_validate(&s)==COG_ERROR_INVALID_ARG);
     }
     strcpy(s.credential_ref,"env:KEY_2");
-    static const char *const urls[]={"http://host","https://","https:///path","https://user@host","https://host?q=1","https://host#x","https://ho st"};
+    static const char *const urls[]={"http://host","https://","https:///path","https://user@host","https://host?q=1","https://host#x","https://ho st","https://:443/path","https://:/","https://[]/","https://[::1/path","https://[bad]/","https://[::1]extra/","https://host:/","https://host:65536/","https://host:0/","https://-host/","https://host..name/"};
     for(size_t i=0;i<sizeof(urls)/sizeof(urls[0]);++i) {
         strcpy(s.base_url,urls[i]);CHECK(cog_tui_settings_validate(&s)==COG_ERROR_INVALID_ARG);
     }
+    strcpy(s.base_url,"https://[::1]:8443/api");
+    CHECK(cog_tui_settings_validate(&s)==COG_OK);
+    strcpy(s.base_url,"https://localhost:443/api");
+    CHECK(cog_tui_settings_validate(&s)==COG_OK);
     strcpy(s.base_url,"https://openrouter.ai/api/v1");
     strcpy(s.provider,"unknown");CHECK(cog_tui_settings_validate(&s)==COG_ERROR_UNSUPPORTED);
     strcpy(s.provider,"openrouter");
@@ -68,6 +72,15 @@ int main(int argc,char **argv)
         CHECK(write_text(path,badfiles[i])==0);before=loaded;
         CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_PROTOCOL && !memcmp(&before,&loaded,sizeof(before)));
     }
+    const char *valid="credential_ref=env:KEY_2\nmodel=fixture/model\nbase_url=https://openrouter.ai/api/v1\nprovider=openrouter\nversion=1";
+    CHECK(write_text(path,valid)==0);
+    CHECK(cog_tui_settings_load(path,&loaded)==COG_OK && !strcmp(loaded.model,"fixture/model"));
+    char duplicate[4096];
+    CHECK(snprintf(duplicate,sizeof(duplicate),"%s\nmodel=second\n",valid)>0);
+    CHECK(write_text(path,duplicate)==0);before=loaded;
+    CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_PROTOCOL && !memcmp(&before,&loaded,sizeof(before)));
+    CHECK(write_text(path,"version=1\nprovider=openrouter\nbase_url=https://openrouter.ai/api/v1\ncredential_ref=env:KEY_2\n")==0);
+    CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_PROTOCOL && !memcmp(&before,&loaded,sizeof(before)));
     FILE *f=fopen(path,"w");CHECK(f!=NULL);
     for(size_t i=0;i<8193;++i)CHECK(fputc('x',f)!=EOF);
     CHECK(fclose(f)==0);CHECK(cog_tui_settings_load(path,&loaded)==COG_ERROR_LIMIT);
