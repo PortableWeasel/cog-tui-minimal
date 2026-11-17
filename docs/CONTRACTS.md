@@ -36,3 +36,7 @@ Tests must cover every row of the scenario document plus strict standalone
 headers. Atomic save errors before replacement retain the previous file. A
 post-rename directory durability error is reported as indeterminate, because the
 new file may already be visible. No operation expands shell syntax.
+
+A snapshot failure after successful core service may leave the drive running;
+status.done=false requires shutdown and continued stepping before free. Core
+driver failures instead latch done. Neither path authorizes replay.

@@ -56,9 +56,11 @@ cog_result_t cog_tui_runtime_submit(cog_tui_runtime_t *runtime,
  * @param[in,out] runtime Live owner.
  * @param[out] status Required result; populated on valid-work errors too.
  * @return OK; NULL_PTR; INVALID_STATE after done; Cog service error.
- * @note Driver error stops new admission and ends driver ownership; retain
- * handle for explicit cleanup. With tools disabled, app/net destructors consume
- * remaining provider ownership. Never automatically replay a failed turn.
+ * @note Core driver errors set done and end driver ownership; retain the handle
+ * for cleanup. A snapshot error after successful core service may instead leave
+ * status.done=false: request shutdown and continue stepping until done before
+ * free. With tools disabled, app/net destructors consume remaining provider
+ * ownership after driver end. Never automatically replay a failed turn.
  */
 cog_result_t cog_tui_runtime_step(cog_tui_runtime_t *runtime,
     cog_tui_runtime_status_t *status);
