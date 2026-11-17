@@ -50,7 +50,9 @@ cog_result_t cog_tui_runtime_submit(cog_tui_runtime_t *runtime,
  * @param[in,out] runtime Live owner.
  * @param[out] status Required result; populated on valid-work errors too.
  * @return OK; NULL_PTR; INVALID_STATE after done; Cog service error.
- * @note Driver error stops new admission; retain handle for explicit cleanup.
+ * @note Driver error stops new admission and ends driver ownership; retain
+ * handle for explicit cleanup. With tools disabled, app/net destructors consume
+ * remaining provider ownership. Never automatically replay a failed turn.
  */
 cog_result_t cog_tui_runtime_step(cog_tui_runtime_t *runtime,
     cog_tui_runtime_status_t *status);
@@ -82,7 +84,9 @@ cog_result_t cog_tui_runtime_shutdown(cog_tui_runtime_t *runtime);
 /** @brief Consume a fully stopped runtime and release app/net/dependencies.
  * @param[in,out] runtime Required pointer; NULL handle is successful no-op.
  * @return OK; NULL_PTR; INVALID_STATE if driver not done (handle retained);
- * otherwise cleanup/latched driver result with handle set NULL.
+ * otherwise cleanup/latched driver result with handle set NULL. A fatal step
+ * result has ended driver ownership and permits teardown in this tool-free
+ * profile; normal shutdown must be driven to done first.
  * @pre No active tool execution (tools disabled in this profile).
  */
 cog_result_t cog_tui_runtime_free(cog_tui_runtime_t **runtime);

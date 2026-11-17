@@ -35,6 +35,8 @@ cog_result_t cog_tui_settings_validate(const cog_tui_settings_t *settings);
  * @return OK; NULL_PTR; INVALID_ARG; NOT_FOUND; IO; DENIED for symlink/nonregular
  * or file not owned by effective UID or accessible to group/other; LIMIT for
  * oversized input; PROTOCOL for unknown/duplicate/missing keys or malformed data.
+ * Credential references match env:[A-Za-z_][A-Za-z0-9_]*. HTTPS URLs require
+ * a host and forbid userinfo, query and fragment.
  * @note No directory creation. File format is version=1 plus provider, model,
  * base_url and credential_ref key=value lines; reject embedded NUL/CR, multiline
  * values and any extra keys. Reads are bounded to 8192 bytes.
@@ -45,7 +47,9 @@ cog_result_t cog_tui_settings_load(const char *path, cog_tui_settings_t *setting
  * @param[in] settings Valid complete settings; borrowed only during call.
  * @return OK; NULL_PTR; INVALID_ARG; UNSUPPORTED; DENIED for unsafe target/parent;
  * IO for create/write/fsync/rename failures. Before rename, failures leave old
- * file intact. The replacement is mode0600 and owned by effective UID.
+ * file intact. INDETERMINATE means rename succeeded but parent-directory sync
+ * failed: new bytes may already be visible; inspect before retry. The
+ * replacement is mode0600 and owned by effective UID.
  * @note Flush file before rename. No secrets or shell expansion. Reject
  * symlink/nonregular existing targets. Parent must be owned by effective UID
  * and not group/other accessible; caller creates its configuration directory.
