@@ -11,16 +11,21 @@ Requires CMake, a C11 compiler, readline development files, a UTF-8 locale, and 
 installed Cog prefix with its audited networking dependencies.
 
 ```sh
-cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/installed/cog
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/installed/cog \
+  -DCMAKE_INSTALL_RPATH=/path/to/installed/cog/lib
 cmake --build build -j4
 ctest --test-dir build --output-on-failure
 cmake --install build --prefix "$PWD/install/stage"
 install/stage/bin/cog-tui
 ```
 
-The installed executable retains the external Cog library directory in its runtime
-search path. Keep that dependency prefix available. No Cog private headers,
+The Linux installed executable uses a relative runtime search path by default.
+Install Cog's runtime libraries under the same prefix, or set an explicit
+`CMAKE_INSTALL_RPATH` for a separate dependency prefix. No Cog private headers,
 source-tree includes, or source copying are part of this build.
+
+See [CPack distribution instructions](docs/DISTRIBUTION.md) for Release binary
+and source archives, shared-prefix extraction, dependencies and licensing limits.
 
 Set your credential environment variable before launching, for example
 `OPENROUTER_API_KEY`, using your normal secret-management workflow. First-run

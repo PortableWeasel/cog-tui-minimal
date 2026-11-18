@@ -113,7 +113,7 @@ configure_tui() {
     cmake -S "$repo" -B "$1" "-DCMAKE_PREFIX_PATH=$repo/install/cog" \
         -DBUILD_TESTING=ON "-DTUI_SANITIZERS=$2" -DCURL_NO_CURL_CMAKE=ON \
         "-DCURL_INCLUDE_DIR=$curl_include" "-DCURL_LIBRARY_RELEASE=$curl_library" \
-        "-DCURL_LIBRARY_DEBUG=$curl_library" ${3:+"-DCMAKE_C_COMPILER=$3"}
+        "-DCURL_LIBRARY_DEBUG=$curl_library" "-DCMAKE_INSTALL_RPATH=$curl_build/lib" ${3:+"-DCMAKE_C_COMPILER=$3"}
 }
 run "$repo/build-real/configure.log" 'Configuring Cog TUI...' \
     configure_tui "$repo/build-real" OFF

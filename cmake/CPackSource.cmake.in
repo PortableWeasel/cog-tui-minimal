@@ -1,0 +1,18 @@
+# CPack clears CPACK_INSTALL_CMAKE_PROJECTS for its source configuration.
+if(NOT CPACK_INSTALL_CMAKE_PROJECTS)
+ set(source_root "@PROJECT_SOURCE_DIR@")
+ set(source_stage "@PROJECT_BINARY_DIR@/cpack-source")
+ file(REMOVE_RECURSE "${source_stage}")
+ file(MAKE_DIRECTORY "${source_stage}")
+ file(STRINGS "${source_root}/cmake/source-files.txt" source_files)
+ foreach(source_file IN LISTS source_files)
+  if(IS_ABSOLUTE "${source_file}" OR source_file MATCHES "(^|/)[.][.](/|$)"
+     OR IS_SYMLINK "${source_root}/${source_file}")
+   message(FATAL_ERROR "Unsafe source manifest entry: ${source_file}")
+  endif()
+  get_filename_component(parent "${source_file}" DIRECTORY)
+  file(MAKE_DIRECTORY "${source_stage}/${parent}")
+  file(COPY "${source_root}/${source_file}" DESTINATION "${source_stage}/${parent}")
+ endforeach()
+ set(CPACK_INSTALLED_DIRECTORIES "${source_stage};/")
+endif()

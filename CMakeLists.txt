@@ -3,12 +3,17 @@ project(cog_tui_minimal VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+include(GNUInstallDirs)
 option(TUI_SANITIZERS "Enable address/undefined sanitizers" OFF)
 find_package(cog-provider REQUIRED CONFIG)
 find_package(Threads REQUIRED)
-foreach(component config toolkit orchestrator cli)
+foreach(component config toolkit orchestrator)
  include("${cog-provider_DIR}/../cog/cog-${component}-targets.cmake")
 endforeach()
+foreach(component instructions runtime)
+ include("${cog-provider_DIR}/../cog-${component}/cog-${component}-targets.cmake")
+endforeach()
+include("${cog-provider_DIR}/../cog/cog-cli-targets.cmake")
 find_path(READLINE_INCLUDE_DIR readline/readline.h REQUIRED)
 find_library(READLINE_LIBRARY readline REQUIRED)
 add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Werror)
@@ -69,6 +74,13 @@ if(BUILD_TESTING)
  add_test(NAME streaming-screen COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/tests/streaming_screen_test.py $<TARGET_FILE:cog-tui>)
  set_tests_properties(streaming-screen PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+ # Contract checks use assert(), including in Release distribution builds.
+ foreach(test_target transcript-test screen-test markdown-test markdown-fuzz-test
+   markdown-alloc-test settings-test runtime-test)
+  if(TARGET ${test_target})
+   target_compile_options(${test_target} PRIVATE -UNDEBUG)
+  endif()
+ endforeach()
  set_tests_properties(settings runtime terminal PROPERTIES TIMEOUT 30)
  foreach(scenario first-run credential-recovery provider-failure eof sigint-idle sigterm-active sigint-active output-hangup save-retry)
   add_test(NAME failure-${scenario} COMMAND ${Python3_EXECUTABLE}
@@ -76,10 +88,27 @@ if(BUILD_TESTING)
   set_tests_properties(failure-${scenario} PROPERTIES TIMEOUT 15)
  endforeach()
 endif()
-set_target_properties(cog-tui PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+# A common extracted prefix may contain the separately packaged Cog runtime.
+# Never retain absolute build/dependency search paths by default.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT DEFINED CMAKE_INSTALL_RPATH
+   AND NOT CMAKE_SKIP_INSTALL_RPATH AND NOT CMAKE_SKIP_RPATH
+   AND NOT CMAKE_INSTALL_RPATH_USE_LINK_PATH)
+ if(NOT IS_ABSOLUTE "${CMAKE_INSTALL_BINDIR}" AND NOT IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+  file(RELATIVE_PATH tui_install_library_path
+   "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}"
+   "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+  set_target_properties(cog-tui PROPERTIES INSTALL_RPATH "$ORIGIN/${tui_install_library_path}")
+ endif()
+endif()
 foreach(header settings runtime app markdown screen transcript)
  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/header_${header}.c" "#include <cog_tui/${header}.h>\n")
  add_library(header-${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/header_${header}.c")
  target_link_libraries(header-${header} PRIVATE tui)
 endforeach()
-install(TARGETS cog-tui RUNTIME DESTINATION bin)
+install(TARGETS cog-tui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS scripts/cog-tui-pi DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES README.md docs/DISTRIBUTION.md
+ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES vendor/md4c/LICENSE.md
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/cog-tui-minimal RENAME MD4C-LICENSE.md)
+include(cmake/Packaging.cmake)

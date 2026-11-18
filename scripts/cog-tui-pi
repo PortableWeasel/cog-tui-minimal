@@ -2,7 +2,7 @@
 # Launch Cog TUI with Pi's current OpenRouter model and credential.
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec python3 - "$script_dir/.." "$@" 3<&0 <<'PY'
+exec python3 - "$script_dir" "$@" 3<&0 <<'PY'
 import json
 import os
 from pathlib import Path
@@ -25,7 +25,8 @@ def private(path, directory=False):
 
 
 try:
-    root = Path(sys.argv[1]).resolve()
+    launcher_dir = Path(sys.argv[1]).resolve()
+    root = launcher_dir.parent
     args = sys.argv[2:]
     if "--help" in args:
         print("Usage: cog-tui-pi [--mock]\n"
@@ -38,7 +39,7 @@ try:
         fail("unsupported option; use --help (set COG_TUI_CONFIG_DIR for settings)")
     binary = os.environ.get("COG_TUI_BIN")
     if not binary:
-        candidates = [root / name for name in (
+        candidates = [launcher_dir / "cog-tui"] + [root / name for name in (
             "build-real/cog-tui", "build/cog-tui",
             "install/stage-real/bin/cog-tui", "install/stage/bin/cog-tui")]
         binary = next((str(p) for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)

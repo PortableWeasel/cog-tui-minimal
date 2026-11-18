@@ -1,6 +1,7 @@
 """Exercise launcher boundaries with synthetic credentials; no provider requests."""
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -37,6 +38,17 @@ sys.exit(7)
     settings.write_text(json.dumps(dict(defaultProvider="openrouter", defaultModel="test/model")))
     auth.write_text(json.dumps(dict(openrouter=dict(type="api_key", key="synthetic-test-secret"))))
     run(7)
+    # Installed launcher must find its sibling without depending on PATH.
+    installed = root / "relocated prefix" / "commands"
+    installed.mkdir(parents=True)
+    shutil.copy2(launcher, installed / "cog-tui-pi")
+    shutil.copy2(fake, installed / "cog-tui")
+    original_launcher = launcher
+    launcher = installed / "cog-tui-pi"
+    del env["COG_TUI_BIN"]
+    run(7)
+    launcher = original_launcher
+    env["COG_TUI_BIN"] = str(fake)
     assert (config / "settings").stat().st_mode & 0o777 == 0o600
     assert config.stat().st_mode & 0o777 == 0o700
     assert "model=test/model\n" in (config / "settings").read_text()
